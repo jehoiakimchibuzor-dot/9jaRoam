@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">9ja Roam</string>
+    <string name="title_activity_main">9ja Roam</string>
+    <string name="package_name">ng.nineja.roam</string>
+    <string name="custom_url_scheme">ng.nineja.roam</string>
+</resources>

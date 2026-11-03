@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+
+# Web build output
+dist/
+
+# Native build output
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+.gradle/
+build/
+*.hprof
+
+# Generated Capacitor files
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/app/src/main/res/xml/config.xml
+android/capacitor-cordova-android-plugins/
+
+# Local machine configuration and secrets
+android/local.properties
+local.properties
+.env
+.env.*
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+
+# Package artifacts
+*.apk
+*.aab
+*.aar
+*.ap_
+*.dex
+*.class
+
+# IDE and editor state
+.idea/
+.vscode/
+*.iml
+captures/
+.navigation/
+.externalNativeBuild/
+.cxx/
+.kotlin/
+
+# Logs and OS files
+*.log
+.DS_Store
+Thumbs.db

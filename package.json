@@ -1,0 +1,36 @@
+{
+  "name": "9ja-roam-3d",
+  "version": "0.1.0",
+  "private": true,
+  "description": "9ja Roam - low-poly 3D mobile action game (Kano)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build",
+    "build-nolog": "vite build --logLevel silent",
+    "preview": "vite preview",
+    "cap:sync": "cap sync android",
+    "android:apk": "cd android && gradlew.bat :app:assembleDebug --console=plain --no-daemon --no-problems-report"
+  },
+  "keywords": [
+    "three",
+    "capacitor",
+    "mobile",
+    "3d"
+  ],
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
+    "@types/three": "^0.186.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  },
+  "main": "index.js",
+  "author": ""
+}

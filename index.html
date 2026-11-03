@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0a0d12" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>9ja Roam</title>
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="scene"></canvas>
+      <div id="damage-flash"></div>
+      <div id="hud">
+        <div id="hud-top">
+          <div id="location">
+            <div id="zone">Kano Municipal</div>
+            <div id="location-sub">KANO</div>
+          </div>
+          <div id="speed">0 km/h</div>
+        </div>
+        <div id="status">
+          <div class="status-row">
+            <span class="status-label">HP</span>
+            <div id="health-bar"><div id="health-fill"></div></div>
+            <span id="health-text">100</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">AP</span>
+            <div id="armour-bar"><div id="armour-fill"></div></div>
+            <span id="armour-text">0</span>
+          </div>
+          <div class="status-row" id="car-health-row">
+            <span class="status-label">CAR</span>
+            <div id="car-health-bar"><div id="car-health-fill"></div></div>
+            <span id="car-health-text">100</span>
+          </div>
+          <div class="status-row" id="car-fuel-row">
+            <span class="status-label">FUEL</span>
+            <div id="car-fuel-bar"><div id="car-fuel-fill"></div></div>
+            <span id="car-fuel-text">100</span>
+          </div>
+          <div class="status-row">
+            <span id="money">₦150 CASH</span>
+            <span id="bank-balance">BANK ₦2,000</span>
+          </div>
+          <div class="status-row">
+            <span id="wanted">☆☆☆☆☆</span>
+          </div>
+          <div class="status-row">
+            <span id="weapon-name">PISTOL</span>
+            <span id="weapon-ammo">12 / 60</span>
+          </div>
+        </div>
+        <canvas id="minimap" width="180" height="180"></canvas>
+        <div id="signal"><span id="signal-state">RED</span><span id="signal-count">9</span></div>
+        <div id="objective">
+          <div id="objective-title">NEXT MISSION</div>
+          <div id="objective-body">Talk to Baba Femi</div>
+        </div>
+        <div id="prompt"></div>
+        <div id="toast"></div>
+        <div id="hint">Stick to move · GAS to drive · REVERSE backs up · B enter/exit car · A fire · E weapon · F next gun</div>
+        <div id="diag"></div>
+      </div>
+      <section id="world-map" aria-hidden="true">
+        <div class="world-map-panel">
+          <header class="world-map-header">
+            <div>
+              <span class="world-map-kicker">9JA ROAM · KANO</span>
+              <h2>City map</h2>
+              <p id="map-destination">Tap to pin a destination · drag to pan when zoomed</p>
+            </div>
+            <div class="world-map-actions">
+              <button id="map-clear" type="button">CLEAR PIN</button>
+              <button id="map-close" type="button" aria-label="Close map">CLOSE</button>
+            </div>
+          </header>
+          <canvas id="world-map-canvas" width="900" height="700" aria-label="Clickable city map"></canvas>
+          <footer class="world-map-footer">
+            <span><i class="map-key-player"></i> YOU</span>
+            <span><i class="map-key-destination"></i> DESTINATION</span>
+            <span><i class="map-key-garage">⚒</i> GARAGE · REPAIR</span>
+            <span><i class="map-key-site">↗</i> ENTERABLE · ZOOM FOR NAMES</span>
+            <span><i class="map-key-transit">D</i> DANFO PARK</span>
+            <span><i class="map-key-rail">T</i> CITY TRAIN</span>
+            <span>Tap to pin · drag to pan · pinch or scroll to zoom</span>
+          </footer>
+        </div>
+      </section>
+      <div id="controls"></div>
+      <div id="scene-fade"></div>
+
+      <div id="dialog">
+        <div class="dialog-card">
+          <div class="dialog-kicker">9JA ROAM · KANO</div>
+          <h2 id="dialog-title">Dialogue</h2>
+          <p id="dialog-body"></p>
+          <div id="dialog-actions"></div>
+          <button id="dialog-close" class="dialog-close" type="button">CLOSE</button>
+        </div>
+      </div>
+
+      <div id="death">
+        <div class="death-card">
+          <div class="death-kicker">THE STREETS DON'T SLEEP</div>
+          <h1 class="death-title">WASTED</h1>
+          <p id="death-text">Medical bill ₦75 · Respawning…</p>
+          <button id="death-button" type="button">RESPAWN NOW</button>
+        </div>
+      </div>
+
+      <div id="rotate">
+        <div class="rotate-card">
+          <div class="rotate-icon">⟳</div>
+          <h1>Rotate your phone</h1>
+          <p>9ja Roam is a landscape game.</p>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
