@@ -277,7 +277,7 @@ const SITE_CONFIG: Record<SiteKind, SiteConfig> = {
     accent: 0x2f6fa8,
     service: 'shop',
     npcName: 'Shopkeeper Yemi',
-    npcLine: 'We get ammo, medicine, anything you need.',
+    npcLine: 'We get ammo, medicine, and streetwear too. Need a fresh look?',
     signBg: '#10263a',
     signFg: '#cfe8ff'
   },

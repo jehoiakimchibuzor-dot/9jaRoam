@@ -304,7 +304,9 @@ export class Traffic {
   update(
     dt: number,
     playerPos: THREE.Vector3 | null,
-    playerCarPos: THREE.Vector3 | null,
+    playerCar: VehicleRig | null,
+    playerCarSpeed: number,
+    playerCarYaw: number,
     parkedVehicles: readonly VehicleRig[] = []
   ): void {
     this.elapsed += dt;
@@ -346,14 +348,43 @@ export class Traffic {
         }
       }
 
-      const obstacle = playerCarPos ?? playerPos;
+      const obstacle = playerCar?.group.position ?? playerPos;
       if (obstacle) {
         const obstacleAlong = v.axis === 'z' ? obstacle.z : obstacle.x;
         const obstacleFixed = v.axis === 'z' ? obstacle.x : obstacle.z;
-        if (Math.abs(obstacleFixed - v.fixed) < 1.9) {
+        const playerFixedRadius = playerCar
+          ? v.axis === 'z'
+            ? (
+                playerCar.width * Math.abs(Math.cos(playerCarYaw)) +
+                playerCar.length * Math.abs(Math.sin(playerCarYaw))
+              ) / 2
+            : (
+                playerCar.width * Math.abs(Math.sin(playerCarYaw)) +
+                playerCar.length * Math.abs(Math.cos(playerCarYaw))
+              ) / 2
+          : 0.7;
+        const playerOnSameLevel =
+          !playerCar ||
+          Math.abs(v.rig.group.position.y - playerCar.group.position.y) <= 2.2;
+        if (
+          playerOnSameLevel &&
+          Math.abs(obstacleFixed - v.fixed) < v.rig.width / 2 + playerFixedRadius + 0.45
+        ) {
           const gap = (obstacleAlong - v.along) * v.dir;
-          if (gap > 0 && gap < 15) {
-            target = Math.min(target, v.cruise * clamp01((gap - 5) / 11));
+          const playerAlongRadius = playerCar
+            ? v.axis === 'z'
+              ? (
+                  playerCar.width * Math.abs(Math.sin(playerCarYaw)) +
+                  playerCar.length * Math.abs(Math.cos(playerCarYaw))
+                ) / 2
+              : (
+                  playerCar.width * Math.abs(Math.cos(playerCarYaw)) +
+                  playerCar.length * Math.abs(Math.sin(playerCarYaw))
+                ) / 2
+            : 2.2;
+          const stopGap = v.rig.length / 2 + playerAlongRadius + 1.2;
+          if (gap > 0 && gap < stopGap + 10) {
+            target = Math.min(target, v.cruise * clamp01((gap - stopGap) / 10));
           }
         }
         for (const parked of parkedVehicles) {
@@ -429,10 +460,18 @@ export class Traffic {
       else if (v.along < v.min) v.along = v.max - 2;
 
       if (v.axis === 'z') {
-        v.rig.group.position.set(v.fixed, this.city.deckHeightAt(v.fixed, v.along, 'z'), v.along);
+        v.rig.group.position.set(
+          v.fixed,
+          this.city.deckHeightAt(v.fixed, v.along, 'z', v.rig.group.position.y),
+          v.along
+        );
         v.rig.group.rotation.y = v.dir === 1 ? 0 : Math.PI;
       } else {
-        v.rig.group.position.set(v.along, this.city.deckHeightAt(v.along, v.fixed, 'x'), v.fixed);
+        v.rig.group.position.set(
+          v.along,
+          this.city.deckHeightAt(v.along, v.fixed, 'x', v.rig.group.position.y),
+          v.fixed
+        );
         v.rig.group.rotation.y = v.dir === 1 ? Math.PI / 2 : -Math.PI / 2;
       }
 
@@ -451,6 +490,68 @@ export class Traffic {
 
     this.resolveCollisions();
     this.resolveParkedCollisions(parkedVehicles);
+    this.resolvePlayerCollision(playerCar, playerCarSpeed, playerCarYaw);
+  }
+
+  private resolvePlayerCollision(
+    playerCar: VehicleRig | null,
+    playerCarSpeed: number,
+    playerCarYaw: number
+  ): void {
+    if (!playerCar) return;
+    const player = playerCar.group.position;
+    const playerVx = Math.sin(playerCarYaw) * playerCarSpeed;
+    const playerVz = Math.cos(playerCarYaw) * playerCarSpeed;
+    for (const traffic of this.list) {
+      if (traffic.rig.wrecked) continue;
+      const car = traffic.rig.group.position;
+      if (Math.abs(car.y - player.y) > 2.2) continue;
+      const overlap = vehicleOverlap(
+        car,
+        traffic.rig.group.rotation.y,
+        traffic.rig.width,
+        traffic.rig.length,
+        player,
+        playerCarYaw,
+        playerCar.width,
+        playerCar.length
+      );
+      if (!overlap) continue;
+
+      const trafficVx = traffic.axis === 'x' ? traffic.dir * traffic.speed : 0;
+      const trafficVz = traffic.axis === 'z' ? traffic.dir * traffic.speed : 0;
+      const closing = Math.hypot(playerVx - trafficVx, playerVz - trafficVz);
+      const alongDelta = traffic.axis === 'x' ? car.x - player.x : car.z - player.z;
+      const trafficAlongRadius = traffic.rig.length / 2;
+      const playerAlongRadius = traffic.axis === 'x'
+        ? (
+            playerCar.width * Math.abs(Math.cos(playerCarYaw)) +
+            playerCar.length * Math.abs(Math.sin(playerCarYaw))
+          ) / 2
+        : (
+            playerCar.width * Math.abs(Math.sin(playerCarYaw)) +
+            playerCar.length * Math.abs(Math.cos(playerCarYaw))
+          ) / 2;
+      const separation = trafficAlongRadius + playerAlongRadius - Math.abs(alongDelta) + 0.04;
+      const sign = alongDelta === 0 ? -traffic.dir : Math.sign(alongDelta);
+      traffic.along += sign * Math.max(separation, overlap.depth * 0.35);
+      traffic.speed = 0;
+      traffic.stop = Math.max(traffic.stop, 0.8);
+      this.place(traffic);
+
+      if (closing > 3 && this.crashCooldown <= 0) {
+        this.crashCooldown = 0.3;
+        this.damage(traffic.rig, Math.min(12, Math.max(0.35, (closing - 5.5) * 0.24)));
+        this.onCrash?.(
+          new THREE.Vector3(
+            (car.x + player.x) / 2,
+            Math.max(car.y, player.y) + 0.8,
+            (car.z + player.z) / 2
+          ),
+          closing
+        );
+      }
+    }
   }
 
   private resolveParkedCollisions(parkedVehicles: readonly VehicleRig[]): void {
@@ -478,7 +579,7 @@ export class Traffic {
         traffic.stop = Math.max(traffic.stop, 0.8);
         if (impactSpeed > 3 && this.crashCooldown <= 0) {
           this.crashCooldown = 0.35;
-          const damage = Math.min(48, Math.max(1.5, (impactSpeed - 2.2) * 1.2));
+          const damage = Math.min(14, Math.max(0.35, (impactSpeed - 3.5) * 0.32));
           this.damage(traffic.rig, damage);
           this.damage(parked, damage);
           this.onCrash?.(
@@ -670,7 +771,7 @@ export class Traffic {
             (a.rig.group.position.z + b.rig.group.position.z) / 2
           );
           this.onCrash?.(at, closing);
-          const damage = Math.min(72, Math.max(1.5, (closing - 2.2) * 1.55));
+          const damage = Math.min(18, Math.max(0.35, (closing - 3.5) * 0.38));
           this.damage(a.rig, damage);
           this.damage(b.rig, damage);
         }

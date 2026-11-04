@@ -230,14 +230,14 @@ function addWheels(
 
 function defaultToughness(rig: VehicleRig): number {
   const label = rig.access?.label ?? '';
-  if (label === 'OKADA') return 90;
-  if (label === 'SPORT CAR') return 170;
-  if (label === 'LUXURY CAR') return 240;
-  if (label === 'DANFO') return 260;
-  if (label === 'KEKE') return 140;
-  if (label === 'SEDAN') return 200;
+  if (label === 'OKADA') return 180;
+  if (label === 'SPORT CAR') return 300;
+  if (label === 'LUXURY CAR') return 420;
+  if (label === 'DANFO') return 480;
+  if (label === 'KEKE') return 280;
+  if (label === 'SEDAN') return 360;
   // Police cruisers are the only rig without an access descriptor.
-  return 220;
+  return 400;
 }
 
 /** Gives a rig a damage pool the first time it is touched. */
@@ -311,6 +311,17 @@ function finishVehicle(rig: VehicleRig): VehicleRig {
   const label = rig.access?.label ?? '';
   const factor = label === 'OKADA' ? 1.2 : label === 'KEKE' ? 1.06 : 1.08;
   scaleVehicle(rig, factor);
+  if (
+    label === 'SEDAN' ||
+    label === 'SPORT CAR' ||
+    label === 'LUXURY CAR' ||
+    (!rig.access && rig.length >= 4)
+  ) {
+    const heightFactor = 1.15;
+    rig.group.scale.y *= heightFactor;
+    rig.centerOfMassY *= heightFactor;
+    if (rig.access) rig.access.cameraHeight *= heightFactor;
+  }
   return rig;
 }
 
@@ -591,16 +602,38 @@ export function createSedan(color = 0x2f5d9e, police = false, luxury = false): V
   }
   rbox(group, 1.34, 0.12, 0.92, 0.08, bodyColor, 0, 0.84, 1.47, 0.48);
   rbox(group, 1.28, 0.1, 0.62, 0.06, bodyColor, 0, 0.82, -1.63, 0.48);
-  rbox(group, 0.66, 0.2, 0.045, 0.035, 0x24282c, 0, 0.69, 2.22, 0.55);
-  for (let i = 0; i < 4; i += 1) {
-    box(group, 0.025, 0.13, 0.02, 0x9aa0a6, -0.22 + i * 0.145, 0.69, 2.25, 0.45);
+  rbox(group, 0.78, 0.18, 0.045, 0.035, 0x24282c, 0, 0.69, 2.22, 0.55);
+  for (let i = 0; i < 5; i += 1) {
+    box(group, 0.025, 0.12, 0.02, 0x9aa0a6, -0.28 + i * 0.14, 0.69, 2.25, 0.45);
   }
   box(group, 0.72, 0.12, 0.035, 0xb9c0c6, 0, 0.47, 2.21, 0.35);
   box(group, 0.54, 0.1, 0.035, 0xb9c0c6, 0, 0.48, -2.2, 0.35);
-  rbox(group, 1.6, 0.36, 0.06, 0.02, 0x3d5a72, 0, 1.1, 0.95, 0.22).material = glass;
-  rbox(group, 1.6, 0.33, 0.06, 0.02, 0x3d5a72, 0, 1.1, -1.22, 0.22).material = glass;
+  const windshield = rbox(group, 1.56, 0.4, 0.06, 0.02, 0x3d5a72, 0, 1.1, 0.95, 0.22);
+  windshield.rotation.x = -0.32;
+  windshield.material = glass;
+  const rearWindow = rbox(group, 1.54, 0.36, 0.06, 0.02, 0x3d5a72, 0, 1.1, -1.22, 0.22);
+  rearWindow.rotation.x = 0.32;
+  rearWindow.material = glass;
   rbox(group, 0.05, 0.32, 1.7, 0.02, 0x3d5a72, -0.81, 1.1, -0.15, 0.22).material = glass;
   rbox(group, 0.05, 0.32, 1.7, 0.02, 0x3d5a72, 0.81, 1.1, -0.15, 0.22).material = glass;
+  for (const side of [-1, 1]) {
+    rbox(group, 0.16, 0.035, 0.045, 0.012, 0xd4d8dc, side * 0.91, 0.91, 0.1, 0.35);
+    box(group, 0.035, 0.16, 0.035, dark, side * 0.92, 1.0, 1.0, 0.8);
+    rbox(group, 0.18, 0.12, 0.12, 0.035, bodyColor, side * 0.99, 1.05, 1.03, 0.55);
+    rbox(group, 0.035, 0.045, 0.06, 0.012, 0xffd98b, side * 0.99, 1.05, 1.09, 0.45);
+    for (const z of [-1.38, 1.38]) {
+      const arch = new THREE.Mesh(
+        new THREE.TorusGeometry(wheelRadius + 0.08, 0.035, 7, 20, Math.PI),
+        mat(bodyColor, 0.72)
+      );
+      arch.rotation.y = Math.PI / 2;
+      arch.position.set(side * 0.91, 0.4, z);
+      group.add(arch);
+    }
+  }
+  rbox(group, 0.94, 0.22, 0.055, 0.035, 0x202327, 0, 0.55, 2.22, 0.45);
+  rbox(group, 1.92, 0.1, 0.16, 0.035, dark, 0, 0.34, 2.14, 0.7);
+  rbox(group, 1.92, 0.1, 0.16, 0.035, dark, 0, 0.34, -2.13, 0.7);
   for (const side of [-1, 1]) {
     box(group, 0.06, 0.5, 0.1, bodyColor, side * 0.82, 1.08, -0.1);
     box(group, 0.06, 0.5, 0.1, bodyColor, side * 0.82, 1.08, 0.78);

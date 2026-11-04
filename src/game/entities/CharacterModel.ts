@@ -29,16 +29,21 @@ export interface CharacterColors {
 
 export interface CharacterStyle {
   build?: number;
+  bodyType?: 'average' | 'athletic' | 'muscular' | 'heavy';
+  outfit?: 'button-up' | 'graphic-tee' | 'senator' | 'kaftan' | 'agbero-vest';
+  footwear?: 'sneakers' | 'slides';
   hairStyle?: 'fade' | 'afro' | 'bald' | 'braids';
   cap?: boolean;
   capColor?: number;
+  capStyle?: 'snapback' | 'northern';
   capBackwards?: boolean;
   headwrap?: boolean;
   headwrapColor?: number;
   glasses?: boolean;
   vest?: boolean;
   vestColor?: number;
-  sleeves?: 'short' | 'tank';
+  reflectiveVest?: boolean;
+  sleeves?: 'short' | 'long' | 'tank';
   bottoms?: 'long' | 'shorts';
   beard?: boolean;
   stubble?: boolean;
@@ -229,8 +234,23 @@ export function createCharacter(
   const hair = colors.hair ?? 0x15110d;
   const shoe = colors.shoes;
   const build = style.build ?? 1;
+  const bodyType = style.bodyType ?? 'athletic';
+  const outfit = style.outfit ?? 'button-up';
   const tank = style.sleeves === 'tank';
+  const longSleeves = style.sleeves === 'long' || outfit === 'senator';
   const shorts = style.bottoms === 'shorts';
+  const waistScale = bodyType === 'heavy' ? 1.18 : bodyType === 'muscular' ? 0.96 : 1;
+  const armScale =
+    bodyType === 'muscular' ? 1.34 : bodyType === 'heavy' ? 1.17 : bodyType === 'athletic' ? 1.1 : 1.03;
+  const legScale =
+    bodyType === 'muscular' ? 1.18 : bodyType === 'heavy' ? 1.16 : bodyType === 'athletic' ? 1.08 : 1.03;
+  const torsoWidth =
+    bodyType === 'muscular' ? 1.28 : bodyType === 'heavy' ? 1.14 : bodyType === 'athletic' ? 1.12 : 1.06;
+  const torsoDepth =
+    bodyType === 'muscular' ? 0.78 : bodyType === 'heavy' ? 0.76 : bodyType === 'athletic' ? 0.73 : 0.7;
+  const shoulderSpan = bodyType === 'muscular' ? 1.2 : bodyType === 'heavy' ? 1.1 : 1;
+  const longTunic = outfit === 'senator' || outfit === 'kaftan';
+  const tee = outfit === 'graphic-tee' || outfit === 'agbero-vest';
 
   const shirtShade = tint(shirt, 0.84);
   const shirtLight = tint(shirt, 1.12);
@@ -256,12 +276,24 @@ export function createCharacter(
     0,
     0,
     0,
-    1.08 * build,
-    0.72 * build,
+    1.08 * build * waistScale,
+    0.72 * build * waistScale,
     12
   );
 
-  ring(torso, 0.166, 0.166, 0.042, jeansShade, 0, 0.05, 0, 14, 1.08 * build, 0.72 * build);
+  ring(
+    torso,
+    0.166,
+    0.166,
+    0.042,
+    jeansShade,
+    0,
+    0.05,
+    0,
+    14,
+    1.08 * build * waistScale,
+    0.72 * build * waistScale
+  );
   // Belt with buckle and loops.
   ring(torso, 0.171, 0.169, 0.028, 0x2a2219, 0, 0.06, 0, 14, 1.07 * build, 0.72 * build);
   block(torso, 0.062, 0.034, 0.018, 0.006, 0xc9a227, 0, 0.06, 0.126 * build, 1);
@@ -277,59 +309,124 @@ export function createCharacter(
   }
 
   // ------------------------------------------------------------------ shirt
-  const upperProfile: Array<[number, number]> = [
-    [0.152, 0.075],
-    [0.158, 0.11],
-    [0.151, 0.17],
-    [0.156, 0.23],
-    [0.171, 0.3],
-    [0.184, 0.36],
-    [0.192, 0.41],
-    [0.19, 0.45],
-    [0.174, 0.48],
-    [0.14, 0.51],
-    [0.096, 0.53],
-    [0.062, 0.545]
-  ];
+  const upperProfile: Array<[number, number]> = longTunic
+    ? [
+        [0.168, -0.19],
+        [0.176, -0.16],
+        [0.174, -0.08],
+        [0.162, 0.02],
+        [0.158, 0.11],
+        [0.151, 0.17],
+        [0.156, 0.23],
+        [0.171, 0.3],
+        [0.184, 0.36],
+        [0.192, 0.41],
+        [0.19, 0.45],
+        [0.174, 0.48],
+        [0.14, 0.51],
+        [0.096, 0.53],
+        [0.062, 0.545]
+      ]
+    : [
+        [0.152, 0.075],
+        [0.158, 0.11],
+        [0.151, 0.17],
+        [0.156, 0.23],
+        [0.171, 0.3],
+        [0.184, 0.36],
+        [0.192, 0.41],
+        [0.19, 0.45],
+        [0.174, 0.48],
+        [0.14, 0.51],
+        [0.096, 0.53],
+        [0.062, 0.545]
+      ];
 
-  if (tank) {
-    // Sleeveless tee: the shirt still runs to the neck, but there are no
-    // sleeves, so the deltoids and arms are bare. Much cleaner than a tube
-    // top with bolted-on straps.
-    lathe(torso, upperProfile, shirt, 0, 0, 0, 1.15 * build, 0.7 * build, 16);
+  if (bodyType === 'heavy') {
+    for (let i = 0; i < upperProfile.length; i += 1) {
+      const [radius, y] = upperProfile[i];
+      if (y >= 0.08 && y <= 0.36) upperProfile[i] = [radius * 1.12, y];
+    }
+  } else if (bodyType === 'muscular') {
+    for (let i = 0; i < upperProfile.length; i += 1) {
+      const [radius, y] = upperProfile[i];
+      if (y >= 0.08 && y <= 0.2) upperProfile[i] = [radius * 0.9, y];
+      else if (y >= 0.23 && y <= 0.48) upperProfile[i] = [radius * 1.12, y];
+    }
+  }
+
+  if (tank || tee || longTunic) {
+    // Crew-neck tees and native tunics share the same fitted torso base.
+    lathe(torso, upperProfile, shirt, 0, 0, 0, torsoWidth * build, torsoDepth * build, 18);
     ring(torso, 0.073, 0.075, 0.022, shirtShade, 0, 0.541, 0, 14, 1.05, 0.84);
-    ring(torso, 0.154, 0.152, 0.018, shirtShade, 0, 0.081, 0, 14, 1.15 * build, 0.7 * build);
+    ring(
+      torso,
+      0.154,
+      0.152,
+      0.018,
+      shirtShade,
+      0,
+      longTunic ? -0.175 : 0.081,
+      0,
+      14,
+      torsoWidth * build,
+      torsoDepth * build
+    );
+    if (outfit === 'senator' || outfit === 'kaftan') {
+      ring(torso, 0.075, 0.077, 0.035, shirtLight, 0, 0.535, 0, 14, 1.05, 0.9);
+      block(torso, 0.018, 0.2, 0.012, 0.004, shirtLight, 0, 0.39, 0.128, 1);
+      for (let i = 0; i < 3; i += 1) {
+        block(torso, 0.05, 0.014, 0.009, 0.003, accent, 0, 0.45 - i * 0.045, 0.137, 1);
+      }
+      if (outfit === 'senator') {
+        for (const side of [-1, 1]) {
+          block(torso, 0.035, 0.12, 0.009, 0.003, shirtLight, side * 0.065, 0.39, 0.119, 1);
+          for (let i = 0; i < 3; i += 1) {
+            block(torso, 0.016, 0.012, 0.008, 0.002, accent, side * 0.065, 0.425 - i * 0.026, 0.125, 1);
+          }
+        }
+      }
+    } else if (style.print !== undefined && tee) {
+      block(torso, 0.14, 0.13, 0.008, 0.01, style.print, 0, 0.33, 0.131, 1);
+      block(torso, 0.075, 0.012, 0.006, 0.003, accent, 0, 0.365, 0.137, 1);
+      block(torso, 0.012, 0.055, 0.006, 0.003, accent, -0.03, 0.33, 0.137, 1);
+      block(torso, 0.012, 0.055, 0.006, 0.003, accent, 0.03, 0.33, 0.137, 1);
+    }
   } else {
-    lathe(torso, upperProfile, shirt, 0, 0, 0, 1.15 * build, 0.7 * build, 16);
+    lathe(torso, upperProfile, shirt, 0, 0, 0, torsoWidth * build, torsoDepth * build, 18);
     // Ribbed crew neck.
     ring(torso, 0.073, 0.075, 0.022, shirtShade, 0, 0.541, 0, 14, 1.05, 0.84);
-    // Collar points.
+    // Collared everyday shirt.
     for (const side of [-1, 1]) {
       const collar = block(torso, 0.1, 0.026, 0.06, 0.008, shirtLight, side * 0.052, 0.515, 0.094, 1);
       collar.rotation.z = side * -0.42;
       collar.rotation.y = side * 0.2;
     }
-    // Placket and buttons.
     block(torso, 0.014, 0.27, 0.01, 0.003, shirtShade, 0, 0.34, 0.126, 1);
     for (let i = 0; i < 4; i += 1) {
       sphere(torso, 0.009, accent, 0, 0.43 - i * 0.07, 0.132, 0.75, 1, 0.5, 6);
     }
-    // Chest pocket.
     block(torso, 0.082, 0.08, 0.016, 0.006, shirtLight, -0.075, 0.375, 0.122, 1);
     block(torso, 0.086, 0.012, 0.018, 0.003, shirtShade, -0.075, 0.412, 0.124, 1);
-    // Hem stitching.
     ring(torso, 0.154, 0.152, 0.018, shirtShade, 0, 0.081, 0, 14, 1.15 * build, 0.7 * build);
-
-    if (style.print !== undefined) {
-      block(torso, 0.14, 0.13, 0.008, 0.01, style.print, 0, 0.33, 0.131, 1);
-    }
   }
 
   // Shoulders are carried by the arm caps, not by balls stuck on the torso.
   // Only the short-sleeve seam belongs on the body.
   if (!tank) {
     for (const side of [-1, 1]) {
-      const seam = block(torso, 0.05, 0.016, 0.16, 0.005, shirtShade, side * 0.176 * build, 0.482, 0.0, 1);
+      const seam = block(
+        torso,
+        0.05,
+        0.016,
+        0.16,
+        0.005,
+        shirtShade,
+        side * 0.176 * build * shoulderSpan,
+        0.482,
+        0.0,
+        1
+      );
       seam.rotation.z = side * 0.32;
     }
   }
@@ -348,8 +445,8 @@ export function createCharacter(
     };
     const chestZ = (x: number, y: number): number => {
       const r = radiusAt(y);
-      const halfX = r * 1.15 * build;
-      const halfZ = r * 0.7 * build;
+      const halfX = r * torsoWidth * build;
+      const halfZ = r * torsoDepth * build;
       const t = Math.max(0, 1 - (x * x) / (halfX * halfX));
       return halfZ * Math.sqrt(t);
     };
@@ -367,13 +464,19 @@ export function createCharacter(
   }
 
   if (style.vest) {
-    const vestColor = style.vestColor ?? 0x2a2f38;
+    const vestColor = style.reflectiveVest ? 0xd7d33c : style.vestColor ?? 0x2a2f38;
     for (const side of [-1, 1]) {
       block(torso, 0.078, 0.4, 0.26, 0.02, vestColor, side * 0.142 * build, 0.29, 0, 1);
       block(torso, 0.05, 0.09, 0.28, 0.016, vestColor, side * 0.098 * build, 0.46, 0, 1);
     }
     block(torso, 0.29, 0.4, 0.026, 0.018, vestColor, 0, 0.29, -0.105, 1);
     block(torso, 0.29, 0.4, 0.026, 0.018, vestColor, 0, 0.29, 0.105, 1);
+    if (style.reflectiveVest) {
+      for (const y of [0.22, 0.38]) {
+        block(torso, 0.27, 0.024, 0.012, 0.005, 0xf0f0d7, 0, y, 0.125, 1);
+        block(torso, 0.27, 0.024, 0.012, 0.005, 0xf0f0d7, 0, y, -0.125, 1);
+      }
+    }
   }
 
   // ------------------------------------------------------------- neck / head
@@ -465,6 +568,22 @@ export function createCharacter(
     sphere(head, 0.052, wrapColor, 0, 0.17, -0.118, 1.1, 0.92, 1, 10);
     const knot = block(head, 0.07, 0.05, 0.04, 0.012, tint(wrapColor, 0.9), 0.09, 0.16, -0.1, 1);
     knot.rotation.z = 0.4;
+  } else if (style.cap && style.capStyle === 'northern') {
+    const capColor = style.capColor ?? 0xd7d3c7;
+    lathe(
+      head,
+      [[0.065, 0.16], [0.078, 0.17], [0.082, 0.2], [0.068, 0.23], [0.042, 0.25]],
+      capColor,
+      0,
+      0,
+      -0.005,
+      1.05,
+      1,
+      16
+    );
+    for (let i = -2; i <= 2; i += 1) {
+      block(head, 0.008, 0.048, 0.006, 0.002, tint(capColor, 0.72), i * 0.024, 0.204, 0.071, 1);
+    }
   } else if (style.cap) {
     const capColor = style.capColor ?? 0x17181c;
     sphere(head, 0.112, capColor, 0, 0.196, -0.008, 1.03, 0.72, 1.04, 14);
@@ -513,7 +632,7 @@ export function createCharacter(
   // -------------------------------------------------------------------- arms
   const makeArm = (side: -1 | 1): { arm: THREE.Group; elbow: THREE.Group } => {
     const arm = new THREE.Group();
-    arm.position.set(side * 0.195 * build, 0.446, 0);
+    arm.position.set(side * 0.195 * build * shoulderSpan, 0.446, 0);
     torso.add(arm);
 
     if (!tank) {
@@ -522,9 +641,9 @@ export function createCharacter(
       lathe(
         arm,
         [
-          [0.055, -0.19],
-          [0.06, -0.16],
-          [0.064, -0.09],
+          [0.055, longSleeves ? -0.3 : -0.16],
+          [0.06, longSleeves ? -0.255 : -0.125],
+          [0.064, longSleeves ? -0.18 : -0.07],
           [0.066, -0.02],
           [0.065, 0.02],
           [0.06, 0.055],
@@ -535,11 +654,23 @@ export function createCharacter(
         0,
         0,
         0,
-        1,
-        0.94,
+        armScale,
+        0.94 * armScale,
         12
       );
-      ring(arm, 0.058, 0.058, 0.014, shirtShade, 0, -0.194, 0, 10, 1.02, 0.94);
+      ring(
+        arm,
+        0.058,
+        0.058,
+        0.014,
+        shirtShade,
+        0,
+        longSleeves ? -0.295 : -0.157,
+        0,
+        10,
+        1.02 * armScale,
+        0.94 * armScale
+      );
     }
 
     // Upper arm and deltoid in one profile; the shoulder dome carries the
@@ -548,29 +679,54 @@ export function createCharacter(
       arm,
       [
         [0.044, -0.29],
-        [0.049, -0.25],
-        [0.053, -0.19],
-        [0.055, -0.11],
-        [0.056, -0.03],
-        [0.057, 0.015],
-        [0.052, 0.05],
-        [0.04, 0.075],
-        [0.022, 0.09]
+        [0.052, -0.25],
+        [0.064, -0.19],
+        [0.067, -0.11],
+        [0.068, -0.03],
+        [0.073, 0.015],
+        [0.071, 0.05],
+        [0.05, 0.082],
+        [0.022, 0.1]
       ],
       skin,
       0,
       0,
       0,
-      1,
-      0.94,
+      armScale,
+      0.94 * armScale,
       10
     );
-    sphere(arm, 0.048, skin, 0, -0.285, 0, 1, 0.95, 0.95, 10);
+    sphere(arm, 0.048, skin, 0, -0.285, 0, armScale, 0.95 * armScale, 0.95 * armScale, 10);
+    if (bodyType === 'muscular') {
+      sphere(arm, 0.047, skin, 0, -0.19, 0.018, 0.94, 1.3, 0.92, 12);
+      sphere(arm, 0.044, skin, 0, -0.19, -0.018, 0.92, 1.26, 0.9, 12);
+    }
 
     const elbow = new THREE.Group();
     elbow.position.set(0, -0.29, 0);
     elbow.rotation.x = -0.06;
     arm.add(elbow);
+
+    if (longSleeves) {
+      lathe(
+        elbow,
+        [
+          [0.034, -0.24],
+          [0.044, -0.2],
+          [0.048, -0.12],
+          [0.049, -0.04],
+          [0.048, 0.005]
+        ],
+        shirt,
+        0,
+        0,
+        0,
+        armScale,
+        armScale,
+        10
+      );
+      ring(elbow, 0.035, 0.036, 0.018, shirtShade, 0, -0.232, 0, 8, armScale, armScale);
+    }
 
     // Forearm with a brachioradialis swell, wrist, hand and fingers.
     lathe(
@@ -586,8 +742,8 @@ export function createCharacter(
       0,
       0,
       0,
-      1,
-      0.92,
+      armScale,
+      0.92 * armScale,
       10
     );
     ring(elbow, 0.033, 0.035, 0.026, skinShade, 0, -0.25, 0, 8, 1, 0.92);
@@ -620,7 +776,7 @@ export function createCharacter(
   // -------------------------------------------------------------------- legs
   const makeLeg = (side: -1 | 1): { leg: THREE.Group; knee: THREE.Group } => {
     const leg = new THREE.Group();
-    leg.position.set(side * 0.098 * build, HIP_HEIGHT, 0);
+    leg.position.set(side * 0.098 * build * legScale, HIP_HEIGHT, 0);
     body.add(leg);
 
     if (shorts) {
@@ -638,8 +794,8 @@ export function createCharacter(
         0,
         0,
         0,
-        1,
-        0.94,
+        legScale,
+        0.94 * legScale,
         12
       );
       ring(leg, 0.087, 0.087, 0.024, jeansShade, 0, -0.26, 0, 10, 1.02, 0.96);
@@ -654,8 +810,8 @@ export function createCharacter(
         0,
         0,
         0,
-        1,
-        0.94,
+        legScale,
+        0.94 * legScale,
         10
       );
       // Cargo pocket.
@@ -676,8 +832,8 @@ export function createCharacter(
         0,
         0,
         0,
-        1,
-        0.94,
+        legScale,
+        0.94 * legScale,
         12
       );
       block(leg, 0.02, 0.1, 0.085, 0.008, jeansShade, side * 0.092, -0.14, 0.02, 1);
@@ -705,8 +861,8 @@ export function createCharacter(
         0,
         0,
         0,
-        1,
-        0.92,
+        legScale,
+        0.92 * legScale,
         10
       );
       ring(knee, 0.046, 0.049, 0.065, 0xe9e7de, 0, -0.315, 0, 10, 1, 0.94);
@@ -726,26 +882,33 @@ export function createCharacter(
         0,
         0,
         0,
-        1,
-        0.92,
+        legScale,
+        0.92 * legScale,
         12
       );
       ring(knee, 0.056, 0.058, 0.026, jeansShade, 0, -0.308, 0, 10, 1, 0.94);
       ring(knee, 0.051, 0.051, 0.045, 0xe9e7de, 0, -0.33, 0, 8, 1, 0.94);
     }
 
-    // Chunky sneaker: sole, upper, toe box, heel tab, tongue, laces, stripe.
-    block(knee, 0.145, 0.042, 0.305, 0.018, 0xf2efe6, 0, -0.437, 0.055, 2);
-    block(knee, 0.136, 0.088, 0.27, 0.03, shoe, 0, -0.396, 0.048, 2);
-    block(knee, 0.128, 0.062, 0.1, 0.024, shoe, 0, -0.407, 0.166, 1);
-    block(knee, 0.104, 0.055, 0.055, 0.014, shoe, 0, -0.382, -0.062, 1);
-    block(knee, 0.06, 0.024, 0.062, 0.008, 0xd8d4c8, 0, -0.355, 0.116, 1);
-    for (let lace = 0; lace < 3; lace += 1) {
-      const laceMesh = block(knee, 0.072, 0.006, 0.008, 0.002, accent, 0, -0.363 + lace * 0.012, 0.116 + lace * 0.016, 1);
-      laceMesh.rotation.x = -0.18;
+    if (style.footwear === 'slides') {
+      block(knee, 0.14, 0.028, 0.29, 0.014, tint(shoe, 0.55), 0, -0.434, 0.05, 2);
+      block(knee, 0.115, 0.055, 0.22, 0.022, skin, 0, -0.396, 0.058, 2);
+      block(knee, 0.13, 0.035, 0.065, 0.014, shoe, 0, -0.365, 0.085, 2);
+      block(knee, 0.018, 0.012, 0.045, 0.005, accent, 0, -0.365, 0.084, 1);
+    } else {
+      // Chunky sneaker: sole, upper, toe box, heel tab, tongue, laces, stripe.
+      block(knee, 0.145, 0.042, 0.305, 0.018, 0xf2efe6, 0, -0.437, 0.055, 2);
+      block(knee, 0.136, 0.088, 0.27, 0.03, shoe, 0, -0.396, 0.048, 2);
+      block(knee, 0.128, 0.062, 0.1, 0.024, shoe, 0, -0.407, 0.166, 1);
+      block(knee, 0.104, 0.055, 0.055, 0.014, shoe, 0, -0.382, -0.062, 1);
+      block(knee, 0.06, 0.024, 0.062, 0.008, 0xd8d4c8, 0, -0.355, 0.116, 1);
+      for (let lace = 0; lace < 3; lace += 1) {
+        const laceMesh = block(knee, 0.072, 0.006, 0.008, 0.002, accent, 0, -0.363 + lace * 0.012, 0.116 + lace * 0.016, 1);
+        laceMesh.rotation.x = -0.18;
+      }
+      block(knee, 0.008, 0.024, 0.155, 0.003, accent, side * 0.069, -0.4, 0.04, 1);
+      block(knee, 0.132, 0.014, 0.026, 0.005, 0x201d1a, 0, -0.43, 0.196, 1);
     }
-    block(knee, 0.008, 0.024, 0.155, 0.003, accent, side * 0.069, -0.4, 0.04, 1);
-    block(knee, 0.132, 0.014, 0.026, 0.005, 0x201d1a, 0, -0.43, 0.196, 1);
 
     return { leg, knee };
   };

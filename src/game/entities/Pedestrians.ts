@@ -786,19 +786,34 @@ export class Pedestrians {
   } {
     const a = archetype ?? pick(ARCHETYPES);
     const headwrap = Math.random() < (a.headwrap ?? 0);
+    const reflectiveVest = Math.random() < 0.1;
+    const outfitOptions: Array<NonNullable<CharacterStyle['outfit']>> = [
+      'graphic-tee',
+      'graphic-tee',
+      'senator',
+      'kaftan',
+      'button-up'
+    ];
+    const outfit = reflectiveVest ? 'agbero-vest' : pick(outfitOptions);
     const style: CharacterStyle = {
       build: rand(a.build),
+      bodyType: pick(['average', 'athletic', 'muscular', 'heavy']),
+      outfit,
+      footwear: Math.random() < 0.32 ? 'slides' : 'sneakers',
       hairStyle: pick(a.hair ?? ['fade', 'afro', 'bald']),
       cap: !headwrap && Math.random() < (a.cap ?? 0.2),
       capColor: pick(CAPS),
+      capStyle: Math.random() < 0.3 ? 'northern' : 'snapback',
       headwrap,
       headwrapColor: pick(HEADWRAPS),
       glasses: Math.random() < (a.glasses ?? 0.12),
-      vest: Math.random() < (a.vest ?? 0),
+      vest: reflectiveVest || Math.random() < (a.vest ?? 0),
+      reflectiveVest,
       vestColor: pick(a.vestColors ?? VESTS),
-      sleeves: pick(a.sleeves ?? ['short', 'short', 'tank']),
-      bottoms: pick(a.bottoms ?? ['long', 'long', 'shorts']),
-      beard: Math.random() < (a.beard ?? 0.22)
+      sleeves: outfit === 'senator' ? 'long' : pick(a.sleeves ?? ['short', 'short', 'tank']),
+      bottoms: outfit === 'senator' ? 'long' : pick(a.bottoms ?? ['long', 'long', 'shorts']),
+      beard: Math.random() < (a.beard ?? 0.22),
+      print: outfit === 'graphic-tee' ? pick([0xd4a12f, 0x2f6fa8, 0x8f2f5c, 0x2f7f5b]) : undefined
     };
     const prop = Math.random() < (a.propChance ?? 0) ? (a.prop ?? null) : null;
     return {

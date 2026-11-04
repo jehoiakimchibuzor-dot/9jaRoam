@@ -1,4 +1,11 @@
-export type WeaponId = 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'machete';
+export type WeaponId =
+  | 'pistol'
+  | 'revolver'
+  | 'smg'
+  | 'shotgun'
+  | 'rifle'
+  | 'carbine'
+  | 'machete';
 
 export type WeaponKind = 'ranged' | 'melee';
 
@@ -18,6 +25,13 @@ export interface WeaponSpec {
   reloadTime: number;
 }
 
+export interface WeaponInventorySnapshot {
+  current: WeaponId;
+  unlocked: WeaponId[];
+  mags: Record<WeaponId, number>;
+  reserves: Record<WeaponId, number>;
+}
+
 export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   pistol: {
     id: 'pistol',
@@ -33,6 +47,21 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     spread: 0.014,
     auto: false,
     reloadTime: 1.35
+  },
+  revolver: {
+    id: 'revolver',
+    name: 'Revolver',
+    short: 'REV',
+    kind: 'ranged',
+    damage: 34,
+    range: 62,
+    rate: 2.2,
+    magazine: 6,
+    reserveMax: 72,
+    pellets: 1,
+    spread: 0.009,
+    auto: false,
+    reloadTime: 1.75
   },
   smg: {
     id: 'smg',
@@ -79,6 +108,21 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
     auto: false,
     reloadTime: 2
   },
+  carbine: {
+    id: 'carbine',
+    name: 'Carbine',
+    short: 'CAR',
+    kind: 'ranged',
+    damage: 24,
+    range: 82,
+    rate: 7.5,
+    magazine: 24,
+    reserveMax: 192,
+    pellets: 1,
+    spread: 0.018,
+    auto: true,
+    reloadTime: 2.1
+  },
   machete: {
     id: 'machete',
     name: 'Machete',
@@ -96,7 +140,23 @@ export const WEAPONS: Record<WeaponId, WeaponSpec> = {
   }
 };
 
-const WEAPON_ORDER: WeaponId[] = ['pistol', 'machete', 'smg', 'shotgun', 'rifle'];
+const WEAPON_ORDER: WeaponId[] = [
+  'pistol',
+  'machete',
+  'revolver',
+  'smg',
+  'shotgun',
+  'rifle',
+  'carbine'
+];
+
+function isWeaponId(value: unknown): value is WeaponId {
+  return typeof value === 'string' && WEAPON_ORDER.includes(value as WeaponId);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 export class WeaponInventory {
   readonly order: WeaponId[] = WEAPON_ORDER.slice();
@@ -108,16 +168,20 @@ export class WeaponInventory {
   private unlocked = new Set<WeaponId>(['pistol', 'machete']);
   private mags: Record<WeaponId, number> = {
     pistol: 12,
+    revolver: 0,
     smg: 0,
     shotgun: 0,
     rifle: 0,
+    carbine: 0,
     machete: 0
   };
   private reserves: Record<WeaponId, number> = {
     pistol: 60,
+    revolver: 0,
     smg: 0,
     shotgun: 0,
     rifle: 0,
+    carbine: 0,
     machete: 0
   };
 
@@ -144,6 +208,64 @@ export class WeaponInventory {
 
   isUnlocked(id: WeaponId): boolean {
     return this.unlocked.has(id);
+  }
+
+  snapshot(): WeaponInventorySnapshot {
+    return {
+      current: this.current,
+      unlocked: [...this.unlocked],
+      mags: { ...this.mags },
+      reserves: { ...this.reserves }
+    };
+  }
+
+  restore(snapshot: unknown): void {
+    if (!isRecord(snapshot) || !Array.isArray(snapshot.unlocked)) {
+      throw new Error('Stored weapon inventory is invalid');
+    }
+    const unlocked: WeaponId[] = [];
+    for (const id of snapshot.unlocked) {
+      if (!isWeaponId(id)) throw new Error('Stored weapon inventory contains an unknown weapon');
+      if (!unlocked.includes(id)) unlocked.push(id);
+    }
+    if (!unlocked.includes('pistol') || !unlocked.includes('machete')) {
+      throw new Error('Stored weapon inventory is missing a starter weapon');
+    }
+    if (!isWeaponId(snapshot.current) || !unlocked.includes(snapshot.current)) {
+      throw new Error('Stored current weapon is not unlocked');
+    }
+    if (!isRecord(snapshot.mags) || !isRecord(snapshot.reserves)) {
+      throw new Error('Stored weapon ammunition is invalid');
+    }
+
+    const mags = { ...this.mags };
+    const reserves = { ...this.reserves };
+    for (const id of unlocked) {
+      const spec = WEAPONS[id];
+      if (spec.kind === 'melee') continue;
+      const mag = snapshot.mags[id];
+      const reserve = snapshot.reserves[id];
+      if (
+        typeof mag !== 'number' ||
+        !Number.isSafeInteger(mag) ||
+        mag < 0 ||
+        mag > spec.magazine ||
+        typeof reserve !== 'number' ||
+        !Number.isSafeInteger(reserve) ||
+        reserve < 0 ||
+        reserve > spec.reserveMax
+      ) {
+        throw new Error(`Stored ammunition for ${spec.name} is invalid`);
+      }
+      mags[id] = mag;
+      reserves[id] = reserve;
+    }
+    this.unlocked = new Set(unlocked);
+    this.current = snapshot.current;
+    this.mags = mags;
+    this.reserves = reserves;
+    this.reloading = false;
+    this.reloadTimer = 0;
   }
 
   unlock(id: WeaponId, magazine?: number, reserve?: number): boolean {

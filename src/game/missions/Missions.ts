@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 
-export type MissionType = 'goto' | 'kill' | 'drive' | 'survive';
+export type MissionTransitMode = 'danfo' | 'train';
+export type MissionType = 'goto' | 'kill' | 'drive' | 'survive' | 'transit';
 
 export interface MissionDef {
   id: string;
@@ -18,8 +19,10 @@ export interface MissionDef {
   targetGroup?: string;
   targetCount?: number;
   surviveSeconds?: number;
+  transitMode?: MissionTransitMode;
+  transitTargetId?: string;
   rewardMoney: number;
-  rewardWeapon?: 'smg' | 'shotgun' | 'rifle';
+  rewardWeapon?: 'smg' | 'shotgun' | 'rifle' | 'revolver' | 'carbine';
   rewardAmmo?: number;
 }
 
@@ -141,6 +144,110 @@ const DEFS: MissionDef[] = [
     rewardMoney: 500,
     rewardWeapon: 'rifle',
     rewardAmmo: 40
+  },
+  {
+    id: 'danfo-connection',
+    title: 'Danfo Connection',
+    giverName: 'Hajiya Rabi',
+    giverLine: 'My parcel no fit wait. Board danfo for the west terminal and drop am for Bompai stop.',
+    giverX: -384,
+    giverZ: -274,
+    objective: 'Take a Danfo to Bompai City Stop',
+    type: 'transit',
+    targetX: -220,
+    targetZ: -180,
+    targetRadius: 8,
+    targetLabel: 'BOMPAI CITY STOP',
+    transitMode: 'danfo',
+    transitTargetId: 'bompai-terminal',
+    rewardMoney: 300,
+    rewardAmmo: 24
+  },
+  {
+    id: 'hospital-courier',
+    title: 'Hospital Courier',
+    giverName: 'Nurse Amina',
+    giverLine: 'The clinic needs these supplies before the next shift. Take them straight to General Hospital.',
+    giverX: -180,
+    giverZ: -204,
+    objective: 'Deliver the medical supplies to General Hospital',
+    type: 'goto',
+    targetX: 15.25,
+    targetZ: 20,
+    targetRadius: 4.5,
+    targetLabel: 'GENERAL HOSPITAL',
+    rewardMoney: 350,
+    rewardAmmo: 30
+  },
+  {
+    id: 'agege-trouble',
+    title: 'Agege Trouble',
+    giverName: 'Aunty Bisi',
+    giverLine: 'Those boys dey disturb people near the avenue. Chase them away before this matter grow.',
+    giverX: 80,
+    giverZ: 184,
+    objective: 'Defeat the gang near the western avenue',
+    type: 'kill',
+    targetX: -64,
+    targetZ: 150,
+    targetRadius: 12,
+    targetLabel: 'AGEGE GANG',
+    targetGroup: 'agege',
+    targetCount: 2,
+    rewardMoney: 400,
+    rewardWeapon: 'revolver',
+    rewardAmmo: 36
+  },
+  {
+    id: 'rail-connection',
+    title: 'Rail Connection',
+    giverName: 'Bello the Porter',
+    giverLine: 'My luggage dey wait for me at Sabon Gari. Help me catch the city train before the platform close.',
+    giverX: 316,
+    giverZ: 70,
+    objective: 'Take the city train to Sabon Gari station',
+    type: 'transit',
+    targetX: 384,
+    targetZ: 282,
+    targetRadius: 8,
+    targetLabel: 'SABON GARI RAIL STATION',
+    transitMode: 'train',
+    transitTargetId: 'sabon-gari-rail',
+    rewardMoney: 450,
+    rewardWeapon: 'carbine',
+    rewardAmmo: 36
+  },
+  {
+    id: 'garage-night-shift',
+    title: 'Night Shift',
+    giverName: 'Mechanic Emeka',
+    giverLine: 'This motor no go reach the garage by itself. Bring am back before my boys lock up.',
+    giverX: 80,
+    giverZ: -108,
+    objective: 'Drive a vehicle to Okada Garage',
+    type: 'drive',
+    targetX: -15.25,
+    targetZ: 6,
+    targetRadius: 4.2,
+    targetLabel: 'OKADA GARAGE',
+    rewardMoney: 450,
+    rewardAmmo: 36
+  },
+  {
+    id: 'fagge-last-run',
+    title: 'Fagge Last Run',
+    giverName: 'Mallam Sadiq',
+    giverLine: 'One more delivery before night. Take this medicine to the Kofar Wambai stop and meet the receiver.',
+    giverX: 454,
+    giverZ: 160,
+    objective: 'Deliver the medicine to Kofar Wambai Stop',
+    type: 'goto',
+    targetX: -584,
+    targetZ: -48,
+    targetRadius: 5,
+    targetLabel: 'KOFAR WAMBAI BUS STOP',
+    rewardMoney: 500,
+    rewardAmmo: 42
   }
 ];
 
@@ -267,6 +374,24 @@ export class Missions {
     state.kills += 1;
   }
 
+  completeTransit(mode: MissionTransitMode, stopId: string): MissionDef | null {
+    const def = this.active;
+    if (
+      !def ||
+      def.type !== 'transit' ||
+      def.transitMode !== mode ||
+      def.transitTargetId !== stopId
+    ) {
+      return null;
+    }
+
+    const state = this.states.get(def.id);
+    if (!state) return null;
+    state.status = 'complete';
+    this.activeId = null;
+    return def;
+  }
+
   update(ctx: MissionUpdateContext): MissionUpdateResult {
     const def = this.active;
     const state = this.activeState;
@@ -339,6 +464,7 @@ export class Missions {
     if (!def || !state) return '';
     if (def.type === 'kill') return `${state.kills}/${def.targetCount ?? 1}`;
     if (def.type === 'survive') return `${Math.max(0, Math.ceil((def.surviveSeconds ?? 20) - state.survived))}s`;
+    if (def.type === 'transit') return def.transitMode === 'train' ? 'TRAIN TRIP' : 'DANFO TRIP';
     return '';
   }
 

@@ -2,6 +2,14 @@ import * as THREE from 'three';
 import { Input } from './Input';
 import { Player } from './entities/Player';
 import {
+  SHIRT_COLORS,
+  SHOE_COLORS,
+  SKIN_TONES,
+  TROUSER_COLORS,
+  isPlayerAppearance,
+  type PlayerAppearance
+} from './entities/PlayerAppearance';
+import {
   createBike,
   createDanfo,
   createKeke,
@@ -20,6 +28,8 @@ import {
   City,
   CitySite,
   Collider,
+  constrainPlayerToFootbridge,
+  constrainVehicleToBridge,
   createCity,
   CAUSEWAY_HALF_W,
   CAUSEWAY_X,
@@ -41,8 +51,14 @@ import {
 import { InteriorInstance, InteriorPointDef, Interiors } from './world/Interiors';
 import { ThugSpawn, Thugs } from './npcs/Thugs';
 import { Police, PoliceContext } from './npcs/Police';
-import { WeaponInventory } from './combat/Weapons';
-import { MissionDef, MissionProgressSnapshot, Missions } from './missions/Missions';
+import { WEAPONS, WeaponInventory } from './combat/Weapons';
+import type { WeaponInventorySnapshot, WeaponId } from './combat/Weapons';
+import {
+  MissionDef,
+  MissionProgressSnapshot,
+  MissionTransitMode,
+  Missions
+} from './missions/Missions';
 import { CombatCallbacks, CombatHit } from './systems/CombatTypes';
 import { createHealth, damageHealth, healHealth, Health, restoreHealth } from './systems/Health';
 import { clamp, pushOutColliders, rayWallDistance } from './systems/Physics';
@@ -115,6 +131,8 @@ interface SiteSequence {
 interface TransitSequence {
   timer: number;
   destination: THREE.Vector3;
+  mode: MissionTransitMode;
+  destinationId: string;
   swapped: boolean;
   arrivalLabel: string;
 }
@@ -162,6 +180,8 @@ interface ProgressSaveData {
   missions: MissionProgressSnapshot;
   lootedIds: string[];
   vehicleFuel: Record<string, number>;
+  weapons?: WeaponInventorySnapshot;
+  appearance?: PlayerAppearance;
 }
 
 const CAR_ACCEL = 8.5;
@@ -177,7 +197,7 @@ const DEATH_FEE = 75;
 const LAPO_LOAN_AMOUNT = 500;
 const LAPO_REPAYMENT_AMOUNT = 600;
 const FUEL_PRICE_PER_UNIT = 4;
-const FUEL_USE_PER_METER = 0.012;
+const FUEL_USE_PER_METER = 0.0045;
 const DANFO_FARE = 100;
 const BANK_BALANCE_KEY = '9ja-roam.bank-balance';
 const PROGRESS_SAVE_KEY = '9ja-roam.progress.v1';
@@ -253,6 +273,8 @@ export class Game {
   private camDist = 5.4;
   private camPos = new THREE.Vector3(0, 2.6, 8);
   private camDir = new THREE.Vector3();
+  private sunDirection = new THREE.Vector3();
+  private moonDirection = new THREE.Vector3();
   private cameraColliders: Collider[] = [];
   private snapCameraNext = false;
   private camTarget = new THREE.Vector3();
@@ -291,6 +313,12 @@ export class Game {
   private perfTimer = 0;
   private swimming = false;
   private waterWarned = false;
+  private hemisphereLight!: THREE.HemisphereLight;
+  private sunLight!: THREE.DirectionalLight;
+  private moonLight!: THREE.DirectionalLight;
+  private sunOrb!: THREE.Mesh;
+  private moonOrb!: THREE.Mesh;
+  private lightingMinute = -1;
 
   private giverMarker: THREE.Group;
   private objectiveMarker: THREE.Group;
@@ -318,25 +346,55 @@ export class Game {
     this.camPos.set(-5.0, 3.65, 27.2);
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(-5.0, 1.6, 22);
+    this.scene.add(this.camera);
 
     this.scene.background = new THREE.Color(0xa9cae8);
     this.scene.fog = new THREE.Fog(0xc4d9ea, 85, 340);
 
-    const hemi = new THREE.HemisphereLight(0xd9ecff, 0x7a6a52, 1.3);
-    this.scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xfff4dc, 2.7);
-    sun.position.set(30, 52, -24);
-    sun.castShadow = !IS_ANDROID;
-    sun.shadow.mapSize.set(1024, 1024);
-    sun.shadow.camera.left = -45;
-    sun.shadow.camera.right = 45;
-    sun.shadow.camera.top = 45;
-    sun.shadow.camera.bottom = -45;
-    sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 190;
-    sun.shadow.bias = -0.0005;
-    sun.shadow.normalBias = 0.03;
-    this.scene.add(sun, sun.target);
+    this.hemisphereLight = new THREE.HemisphereLight(0xd9ecff, 0x7a6a52, 1.3);
+    this.sunLight = new THREE.DirectionalLight(0xfff4dc, 2.7);
+    this.sunLight.castShadow = !IS_ANDROID;
+    this.sunLight.shadow.mapSize.set(1024, 1024);
+    this.sunLight.shadow.camera.left = -45;
+    this.sunLight.shadow.camera.right = 45;
+    this.sunLight.shadow.camera.top = 45;
+    this.sunLight.shadow.camera.bottom = -45;
+    this.sunLight.shadow.camera.near = 1;
+    this.sunLight.shadow.camera.far = 190;
+    this.sunLight.shadow.bias = -0.0005;
+    this.sunLight.shadow.normalBias = 0.03;
+    this.moonLight = new THREE.DirectionalLight(0x9db8ec, 0.22);
+    this.sunOrb = new THREE.Mesh(
+      new THREE.SphereGeometry(10, 16, 12),
+      new THREE.MeshBasicMaterial({
+        color: 0xffe6a3,
+        depthTest: false,
+        depthWrite: false,
+        toneMapped: false
+      })
+    );
+    this.moonOrb = new THREE.Mesh(
+      new THREE.SphereGeometry(8, 16, 12),
+      new THREE.MeshBasicMaterial({
+        color: 0xe6ecff,
+        depthTest: false,
+        depthWrite: false,
+        toneMapped: false
+      })
+    );
+    this.sunOrb.frustumCulled = false;
+    this.moonOrb.frustumCulled = false;
+    this.sunOrb.renderOrder = 1;
+    this.moonOrb.renderOrder = 1;
+    this.scene.add(
+      this.hemisphereLight,
+      this.sunLight,
+      this.sunLight.target,
+      this.moonLight,
+      this.moonLight.target,
+    );
+    this.camera.add(this.sunOrb, this.moonOrb);
+    this.updateTimeOfDay();
 
     this.city = createCity();
     this.scene.add(this.city.group);
@@ -369,7 +427,7 @@ export class Game {
       if (!parkingSpace) throw new Error(`Missing starter parking space for vehicle ${index}`);
       vehicle.group.position.set(
         parkingSpace.x,
-        this.city.groundHeightAt(parkingSpace.x, parkingSpace.z) + 0.22,
+        parkingSpace.surfaceY,
         parkingSpace.z
       );
       vehicle.group.rotation.y = parkingSpace.yaw;
@@ -660,16 +718,69 @@ export class Game {
   }
 
   private expandShadow(): void {
-    const light = this.scene.children.find((c) => c instanceof THREE.DirectionalLight) as
-      | THREE.DirectionalLight
-      | undefined;
-    if (!light) return;
-    const focus = this.camTarget;
-    light.position.set(focus.x + 30, 52, focus.z - 24);
-    light.target.position.set(focus.x, 0, focus.z);
+    const date = new Date();
+    const hour = date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
+    const solarAngle = ((hour - 6) / 12) * Math.PI;
+    this.sunDirection.set(
+      Math.cos(solarAngle) * 0.5,
+      Math.sin(solarAngle) * 0.5,
+      -0.72
+    ).normalize();
+    const lunarAngle = solarAngle + Math.PI;
+    this.moonDirection.set(
+      Math.cos(lunarAngle) * 0.5,
+      Math.sin(lunarAngle) * 0.5,
+      -0.72
+    ).normalize();
+
+    this.sunLight.position.copy(this.camTarget).addScaledVector(this.sunDirection, 60);
+    this.sunLight.target.position.copy(this.camTarget);
+    this.moonLight.position.copy(this.camTarget).addScaledVector(this.moonDirection, 60);
+    this.moonLight.target.position.copy(this.camTarget);
+    const sunElevation = Math.max(0, Math.sin(solarAngle));
+    const moonElevation = Math.max(0, Math.sin(lunarAngle));
+    this.sunOrb.position.set(-Math.cos(solarAngle) * 46, 20 + sunElevation * 35, -180);
+    this.moonOrb.position.set(-Math.cos(lunarAngle) * 46, 20 + moonElevation * 35, -180);
+    this.sunOrb.visible = this.sunDirection.y > 0.015;
+    this.moonOrb.visible = this.moonDirection.y > 0.015;
+  }
+
+  private updateTimeOfDay(): void {
+    const date = new Date();
+    const minute = date.getHours() * 60 + date.getMinutes();
+    if (minute === this.lightingMinute) return;
+    this.lightingMinute = minute;
+    const hour = minute / 60;
+    const smoothstep = (edge0: number, edge1: number, value: number): number => {
+      const t = clamp((value - edge0) / (edge1 - edge0), 0, 1);
+      return t * t * (3 - 2 * t);
+    };
+    const daylight =
+      smoothstep(5.5, 7, hour) * (1 - smoothstep(17.5, 19, hour));
+    const twilight = Math.max(
+      1 - Math.abs(hour - 6.2) / 1.7,
+      1 - Math.abs(hour - 17.8) / 1.7
+    );
+    const daySky = new THREE.Color(0xa9cae8);
+    const nightSky = new THREE.Color(0x142238);
+    const dawnSky = new THREE.Color(0xf19a69);
+    const sky = nightSky.lerp(daySky, daylight).lerp(dawnSky, clamp(twilight, 0, 1) * 0.72);
+    const dayFog = new THREE.Color(0xc4d9ea);
+    const nightFog = new THREE.Color(0x25364b);
+    const fog = nightFog.lerp(dayFog, daylight).lerp(dawnSky, clamp(twilight, 0, 1) * 0.36);
+    (this.scene.background as THREE.Color).copy(sky);
+    (this.scene.fog as THREE.Fog).color.copy(fog);
+    this.hemisphereLight.intensity = 0.78 + daylight * 0.52;
+    this.hemisphereLight.color.set(0xd9ecff).lerp(new THREE.Color(0x8fa6d0), 1 - daylight);
+    this.hemisphereLight.groundColor.set(0x7a6a52).lerp(new THREE.Color(0x172338), 1 - daylight);
+    this.sunLight.intensity = 0.04 + daylight * 2.66;
+    this.sunLight.color.set(0xfff4dc).lerp(new THREE.Color(0xffa45c), clamp(twilight, 0, 1));
+    this.moonLight.intensity = 0.7 + (1 - daylight) * 0.45;
+    this.renderer.toneMappingExposure = 0.92 + daylight * 0.24;
   }
 
   private update(dt: number): void {
+    this.updateTimeOfDay();
     this.elapsed += dt;
     this.progressAutosaveTimer += dt;
     if (this.progressAutosaveTimer >= 5) {
@@ -774,12 +885,14 @@ export class Game {
 
     if (!this.inside) {
       const playerPosition = this.player.group.position;
-      const vehiclePosition =
-        this.mode === 'drive' && this.activeVehicle ? this.activeVehicle.group.position : null;
+      const activeVehicle = this.mode === 'drive' ? this.activeVehicle : null;
+      const vehiclePosition = activeVehicle?.group.position ?? null;
       this.traffic.update(
         dt,
         playerPosition,
-        vehiclePosition,
+        activeVehicle,
+        activeVehicle ? this.carSpeed : 0,
+        this.carYaw,
         this.drivableVehicles.filter((vehicle) => vehicle !== this.activeVehicle)
       );
       this.pedestrians.update(dt, this.city, playerPosition, vehiclePosition);
@@ -853,7 +966,7 @@ export class Game {
   private updateFoot(dt: number, a: boolean, b: boolean, c: boolean, d: boolean, e: boolean, f: boolean, r: boolean): void {
     const state = this.input.state;
     const mag = Math.min(1, Math.hypot(state.moveX, state.moveY));
-    const axis = Math.abs(Math.sin(this.player.yaw)) > 0.92 ? 'x' : 'z';
+    const axis = roadAxisForYaw(this.player.yaw);
     const swim = this.swimming || this.city.waterAt(
       this.player.group.position.x,
       this.player.group.position.z,
@@ -1075,8 +1188,9 @@ export class Game {
     const fwd = new THREE.Vector3(Math.sin(this.carYaw), 0, Math.cos(this.carYaw));
     car.group.position.addScaledVector(fwd, this.carSpeed * dt);
     car.group.rotation.y = this.carYaw;
+    this.constrainCarToBridge(car);
 
-    const axis = Math.abs(Math.sin(this.carYaw)) > 0.92 ? 'x' : 'z';
+    const axis = roadAxisForYaw(this.carYaw);
     const carWater = this.city.waterAt(
       car.group.position.x,
       car.group.position.z,
@@ -1915,14 +2029,44 @@ export class Game {
     const options: DialogueOption[] = [];
 
     if (point.service === 'shop') {
+      if (this.activeInterior?.site.kind === 'shop') {
+        options.push({
+          label: 'CUSTOMIZE CHARACTER · FREE',
+          action: () => this.openPlayerWardrobe()
+        });
+      }
       options.push({
         label: '30 PISTOL ROUNDS \u00b7 \u20a680',
         action: () => this.purchase(80, () => this.weapons.addAmmo('pistol', 30), 'Pistol ammo bought')
       });
+      if (this.weapons.isUnlocked('revolver')) {
+        options.push({
+          label: '18 REVOLVER ROUNDS \u00b7 \u20a6110',
+          action: () => this.purchase(110, () => this.weapons.addAmmo('revolver', 18), 'Revolver ammo bought')
+        });
+      }
       if (this.weapons.isUnlocked('smg')) {
         options.push({
           label: '40 SMG ROUNDS \u00b7 \u20a6140',
           action: () => this.purchase(140, () => this.weapons.addAmmo('smg', 40), 'SMG ammo bought')
+        });
+      }
+      if (this.weapons.isUnlocked('carbine')) {
+        options.push({
+          label: '48 CARBINE ROUNDS \u00b7 \u20a6240',
+          action: () => this.purchase(240, () => this.weapons.addAmmo('carbine', 48), 'Carbine ammo bought')
+        });
+      }
+      if (!this.weapons.isUnlocked('revolver')) {
+        options.push({
+          label: 'BUY REVOLVER \u00b7 \u20a6650',
+          action: () => this.purchaseWeapon('revolver', 650)
+        });
+      }
+      if (!this.weapons.isUnlocked('carbine')) {
+        options.push({
+          label: 'BUY CARBINE \u00b7 \u20a61800',
+          action: () => this.purchaseWeapon('carbine', 1800)
         });
       }
       options.push({
@@ -1990,6 +2134,119 @@ export class Game {
 
     options.push({ label: 'LEAVE', action: () => this.closeDialogue() });
     this.showDialogue(title, body, options);
+  }
+
+  private openPlayerWardrobe(): void {
+    const appearance = this.player.appearance;
+    this.showDialogue('Yemi\'s Style Corner', 'Build your look. Changes are saved automatically.', [
+      {
+        label: `BODY TYPE · ${appearance.bodyType.toUpperCase()}`,
+        action: () =>
+          this.openAppearanceChoice('Body type', 'bodyType', [
+            { label: 'Average', value: 'average' },
+            { label: 'Athletic', value: 'athletic' },
+            { label: 'Muscular', value: 'muscular' },
+            { label: 'Heavier build', value: 'heavy' }
+          ])
+      },
+      {
+        label: `OUTFIT · ${appearance.outfit.toUpperCase().replace('-', ' ')}`,
+        action: () =>
+          this.openAppearanceChoice('Outfit', 'outfit', [
+            { label: 'Graphic street tee', value: 'graphic-tee' },
+            { label: 'Fitted Senator wear', value: 'senator' },
+            { label: 'Short-sleeve kaftan', value: 'kaftan' },
+            { label: 'Agbero reflective vest', value: 'agbero-vest' }
+          ])
+      },
+      {
+        label: 'SHIRT COLOUR',
+        action: () => this.openAppearanceChoice('Shirt colour', 'shirtColor', SHIRT_COLORS)
+      },
+      {
+        label: `TROUSERS · ${appearance.bottoms.toUpperCase()}`,
+        action: () =>
+          this.openAppearanceChoice('Trousers', 'bottoms', [
+            { label: 'Long trousers', value: 'long' },
+            { label: 'Shorts', value: 'shorts' }
+          ])
+      },
+      {
+        label: 'TROUSER COLOUR',
+        action: () => this.openAppearanceChoice('Trouser colour', 'pantsColor', TROUSER_COLORS)
+      },
+      {
+        label: `FOOTWEAR · ${appearance.footwear.toUpperCase()}`,
+        action: () =>
+          this.openAppearanceChoice('Footwear', 'footwear', [
+            { label: 'Sneakers', value: 'sneakers' },
+            { label: 'Slides', value: 'slides' }
+          ])
+      },
+      {
+        label: 'SHOE COLOUR',
+        action: () => this.openAppearanceChoice('Shoe colour', 'shoesColor', SHOE_COLORS)
+      },
+      {
+        label: 'SKIN TONE',
+        action: () => this.openAppearanceChoice('Skin tone', 'skinTone', SKIN_TONES)
+      },
+      {
+        label: `HEADWEAR · ${appearance.headwear.toUpperCase().replace('-', ' ')}`,
+        action: () =>
+          this.openAppearanceChoice('Headwear', 'headwear', [
+            { label: 'No hat', value: 'none' },
+            { label: 'Snapback', value: 'snapback' },
+            { label: 'Northern embroidered cap', value: 'northern-cap' },
+            { label: 'Headwrap', value: 'headwrap' }
+          ])
+      },
+      {
+        label: `HAIRSTYLE · ${appearance.hairStyle.toUpperCase()}`,
+        action: () =>
+          this.openAppearanceChoice('Hairstyle', 'hairStyle', [
+            { label: 'Low fade', value: 'fade' },
+            { label: 'Afro', value: 'afro' },
+            { label: 'Braids', value: 'braids' },
+            { label: 'Bald', value: 'bald' }
+          ])
+      },
+      {
+        label: `FACIAL HAIR · ${appearance.facialHair.toUpperCase()}`,
+        action: () =>
+          this.openAppearanceChoice('Facial hair', 'facialHair', [
+            { label: 'Clean shaven', value: 'clean' },
+            { label: 'Stubble', value: 'stubble' },
+            { label: 'Trimmed beard', value: 'beard' }
+          ])
+      },
+      {
+        label: `EYEWEAR · ${appearance.glasses ? 'ON' : 'OFF'}`,
+        action: () =>
+          this.openAppearanceChoice('Eyewear', 'glasses', [
+            { label: 'No glasses', value: false },
+            { label: 'Glasses', value: true }
+          ])
+      },
+      { label: 'DONE', action: () => this.closeDialogue() }
+    ]);
+  }
+
+  private openAppearanceChoice<K extends keyof PlayerAppearance>(
+    title: string,
+    field: K,
+    choices: ReadonlyArray<{ label: string; value: PlayerAppearance[K] }>
+  ): void {
+    const options: DialogueOption[] = choices.map((choice) => ({
+      label: `${this.player.appearance[field] === choice.value ? '✓ ' : ''}${choice.label}`,
+      action: () => {
+        this.player.setAppearance({ ...this.player.appearance, [field]: choice.value });
+        this.saveProgress();
+        this.openPlayerWardrobe();
+      }
+    }));
+    options.push({ label: 'BACK TO WARDROBE', action: () => this.openPlayerWardrobe() });
+    this.showDialogue(title, 'Choose an option for your character.', options);
   }
 
   private openLapoOffice(point: InteriorPointDef): void {
@@ -2074,6 +2331,8 @@ export class Game {
         this.city.groundHeightAt(stop.x, stop.z + 12, 'z'),
         stop.z + 12
       ),
+      mode: 'danfo',
+      destinationId: stop.id,
       swapped: false,
       arrivalLabel: 'DANFO ARRIVED · FARE PAID'
     };
@@ -2111,6 +2370,8 @@ export class Game {
         this.city.groundHeightAt(station.accessX, station.accessZ, 'z'),
         station.accessZ
       ),
+      mode: 'train',
+      destinationId: station.id,
       swapped: false,
       arrivalLabel: 'TRAIN ARRIVED · FARE PAID'
     };
@@ -2133,15 +2394,34 @@ export class Game {
       this.transitSeq = null;
       if (this.ui.fade) this.ui.fade.style.opacity = '0';
       this.showToast(sequence.arrivalLabel);
+      const completedMission = this.missions.completeTransit(
+        sequence.mode,
+        sequence.destinationId
+      );
+      if (completedMission) this.completeMission(completedMission);
     }
   }
 
   private purchase(cost: number, apply: () => void, message: string): void {
     if (!this.spend(cost)) return;
     apply();
+    this.saveProgress();
     this.audio.pickup();
     this.showToast(message);
     this.closeDialogue();
+  }
+
+  private purchaseWeapon(id: WeaponId, cost: number): void {
+    if (this.weapons.isUnlocked(id)) {
+      this.setHint(`${WEAPONS[id].name} is already in your collection`);
+      return;
+    }
+    this.purchase(cost, () => {
+      this.weapons.unlock(id);
+      this.weapons.select(id);
+      this.player.setArmed(true);
+      this.player.setWeapon(id);
+    }, `${WEAPONS[id].name} added to your collection`);
   }
 
   private healFor(amount: number, cost: number, message: string): void {
@@ -2200,6 +2480,9 @@ export class Game {
       if (!Number.isSafeInteger(loanBalance) || loanBalance < 0) {
         throw new Error('Stored loan balance is not a non-negative integer');
       }
+      if (data.appearance !== undefined && !isPlayerAppearance(data.appearance)) {
+        throw new Error('Stored player appearance is invalid');
+      }
       if (!Array.isArray(data.lootedIds)) throw new Error('Stored loot state is invalid');
       if (data.vehicleFuel !== undefined && (!data.vehicleFuel || typeof data.vehicleFuel !== 'object')) {
         throw new Error('Stored vehicle fuel state is invalid');
@@ -2207,8 +2490,10 @@ export class Game {
 
       this.money = data.money;
       this.loanBalance = loanBalance;
+      if (data.appearance) this.player.setAppearance(data.appearance);
       this.looted = new Set(data.lootedIds.filter((id): id is string => typeof id === 'string'));
       this.missions.restore(data.missions);
+      if (data.weapons !== undefined) this.weapons.restore(data.weapons);
       for (const vehicle of this.drivableVehicles) {
         const id = vehicle.group.userData.saveId;
         const fuel = typeof id === 'string' ? data.vehicleFuel?.[id] : undefined;
@@ -2231,6 +2516,8 @@ export class Game {
       loanBalance: this.loanBalance,
       missions: this.missions.snapshot(),
       lootedIds: [...this.looted],
+      appearance: this.player.appearance,
+      weapons: this.weapons.snapshot(),
       vehicleFuel: this.drivableVehicles.reduce<Record<string, number>>((saved, vehicle) => {
         const id = vehicle.group.userData.saveId;
         if (typeof id === 'string') saved[id] = vehicle.fuel ?? vehicle.maxFuel ?? 100;
@@ -2324,8 +2611,10 @@ export class Game {
       this.weapons.select(def.rewardWeapon);
       this.player.setArmed(true);
       this.player.setWeapon(def.rewardWeapon);
+      this.weapons.addAmmo('pistol', 18);
+    } else {
+      this.weapons.addAmmo('pistol', def.rewardAmmo ?? 18);
     }
-    this.weapons.addAmmo('pistol', 18);
     this.saveProgress();
     this.audio.pickup();
     this.showToast(`MISSION COMPLETE \u00b7 ${def.title} \u00b7 +\u20a6${def.rewardMoney}`);
@@ -2351,13 +2640,13 @@ export class Game {
 
   private vehicleHealthCap(car: VehicleRig): number {
     const label = car.access?.label ?? '';
-    if (label === 'OKADA') return 90;
-    if (label === 'SPORT CAR') return 170;
-    if (label === 'LUXURY CAR') return 240;
-    if (label === 'DANFO') return 260;
-    if (label === 'KEKE') return 140;
-    if (label === 'SEDAN') return 200;
-    return 220;
+    if (label === 'OKADA') return 180;
+    if (label === 'SPORT CAR') return 300;
+    if (label === 'LUXURY CAR') return 420;
+    if (label === 'DANFO') return 480;
+    if (label === 'KEKE') return 280;
+    if (label === 'SEDAN') return 360;
+    return 400;
   }
 
   private ensureVehicleHealth(car: VehicleRig): void {
@@ -2993,6 +3282,7 @@ export class Game {
     const colliders = this.inside && this.activeInterior ? this.activeInterior.colliders : this.city.colliders;
     pushOutColliders(colliders, position, radius);
     if (!this.inside) {
+      constrainPlayerToFootbridge(position, radius);
       this.resolveTrafficFoot();
       position.x = clamp(position.x, this.city.worldMinX + 1.2, this.city.worldMaxX - 1.2);
       position.z = clamp(position.z, this.city.worldMinZ + 4, this.city.worldMaxZ - 4);
@@ -3006,8 +3296,9 @@ export class Game {
       this.swimming = false;
       return;
     }
-    const axis = Math.abs(Math.sin(this.player.yaw)) > 0.92 ? 'x' : 'z';
-    const water = this.city.waterAt(position.x, position.z, axis, position.y);
+    const axis = roadAxisForYaw(this.player.yaw);
+    const groundReferenceY = position.y - this.player.jumpOffset;
+    const water = this.city.waterAt(position.x, position.z, axis, groundReferenceY);
     if (water !== null) {
       if (!this.swimming) {
         this.swimming = true;
@@ -3022,7 +3313,7 @@ export class Game {
     this.swimming = false;
     // Smooth the rise over steps and bridge ramps instead of snapping.
     const targetY =
-      this.city.groundHeightAt(position.x, position.z, axis, position.y) + this.player.jumpOffset;
+      this.city.groundHeightAt(position.x, position.z, axis, groundReferenceY) + this.player.jumpOffset;
     const delta = targetY - position.y;
     if (Math.abs(delta) > 1.4) position.y = targetY;
     else position.y += delta * (1 - Math.exp(-18 * dt));
@@ -3120,7 +3411,8 @@ export class Game {
     }
     position.x = clamp(position.x, this.city.worldMinX + 2, this.city.worldMaxX - 2);
     position.z = clamp(position.z, this.city.worldMinZ + 6, this.city.worldMaxZ - 6);
-    const axis = Math.abs(Math.sin(this.carYaw)) > 0.92 ? 'x' : 'z';
+    this.constrainCarToBridge(car);
+    const axis = roadAxisForYaw(this.carYaw);
     const water = this.city.waterAt(position.x, position.z, axis, position.y);
     if (water !== null) {
       position.y = water - 0.22;
@@ -3129,6 +3421,15 @@ export class Game {
     }
 
     this.resolveCruiserCollision();
+  }
+
+  private constrainCarToBridge(car: VehicleRig): void {
+    const yaw = car.group.rotation.y;
+    const halfWidthX =
+      (car.width * Math.abs(Math.cos(yaw)) + car.length * Math.abs(Math.sin(yaw))) / 2;
+    const halfWidthZ =
+      (car.width * Math.abs(Math.sin(yaw)) + car.length * Math.abs(Math.cos(yaw))) / 2;
+    constrainVehicleToBridge(car.group.position, halfWidthX, halfWidthZ);
   }
 
   private resolveCruiserCollision(): void {
@@ -3253,7 +3554,7 @@ export class Game {
         )
       );
       if (canDamage) {
-        this.traffic.damage(vehicle.rig, clamp((closing - 4.5) * 0.45, 0.5, 20));
+        this.traffic.damage(vehicle.rig, clamp((closing - 5.5) * 0.24, 0.3, 10));
       }
       vehicle.stop = Math.max(vehicle.stop, 1.2);
       vehicle.speed *= 0.25;
@@ -3317,7 +3618,7 @@ export class Game {
 
   private registerCrash(relativeSpeed: number, at: THREE.Vector3): void {
     if (this.crashCooldown > 0 || relativeSpeed < 4.5) return;
-    const damage = clamp((relativeSpeed - 4.5) * 0.45, 0.5, 18);
+    const damage = clamp((relativeSpeed - 5.5) * 0.28, 0.35, 12);
     this.crashCooldown = 1.1;
     this.damageVehicle(damage);
     this.camShake = Math.min(1, this.camShake + 0.22 + relativeSpeed * 0.012);
@@ -3513,17 +3814,23 @@ export class Game {
     const base = driving && vehicle ? vehicle.group.position : this.player.group.position;
     const baseY = base.y;
     const height = driving ? vehicle?.access?.cameraHeight ?? 1.75 : this.player.crouched ? 1.05 : 1.5;
-    const elevatedRoad = !this.inside && baseY > 2.2;
+    const bridgeBlend = driving && !this.inside
+      ? clamp((baseY - 0.6) / 5.8, 0, 1)
+      : 0;
     this.camTarget.set(base.x, baseY + height, base.z);
 
     const inside = this.inside;
     const isBike = driving && vehicle ? vehicle.length < 2.5 : false;
     const dist = driving
-      ? clamp(this.camDist + (elevatedRoad ? 8 : 0) + (isBike ? 3.2 : 5), isBike ? 4.5 : 7, elevatedRoad ? 22 : 16)
+      ? clamp(
+          this.camDist + bridgeBlend * 4.5 + (isBike ? 3.2 : 5),
+          isBike ? 4.5 : 7,
+          bridgeBlend > 0.95 ? 22 : 16
+        )
       : inside
         ? clamp(this.camDist, 2.2, 3.0)
         : this.camDist;
-    const pitch = elevatedRoad ? Math.max(this.camPitch, 0.56) : this.camPitch;
+    const pitch = clamp(this.camPitch + bridgeBlend * 0.3, -0.12, 0.82);
     const offX = Math.sin(this.camYaw) * Math.cos(pitch) * dist;
     const offY = Math.sin(pitch) * dist + (driving ? 0.25 : inside ? 0.35 : 0.65);
     const offZ = Math.cos(this.camYaw) * Math.cos(pitch) * dist;
@@ -4355,6 +4662,10 @@ export class Game {
 
 function easeOut(t: number): number {
   return 1 - (1 - t) * (1 - t);
+}
+
+function roadAxisForYaw(yaw: number): 'x' | 'z' {
+  return Math.abs(Math.sin(yaw)) > Math.abs(Math.cos(yaw)) ? 'x' : 'z';
 }
 
 function drawGarageMapIcon(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {

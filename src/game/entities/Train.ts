@@ -1,12 +1,21 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { City, EAST_ROAD_X, ROAD_LENGTH } from '../world/City';
+import {
+  City,
+  EAST_ROAD_X,
+  ROAD_LENGTH,
+  SUBWAY_PLATFORM_HEIGHT,
+  SUBWAY_RAIL_HEIGHT
+} from '../world/City';
 
-const RAIL_HEIGHT = 6.6;
+const RAIL_HEIGHT = SUBWAY_RAIL_HEIGHT;
 const RAIL_START = -ROAD_LENGTH / 2 + 24;
 const RAIL_END = ROAD_LENGTH / 2 - 24;
 const RAIL_SPACING = 2.4;
 const TRAIN_END_MARGIN = 18;
+const STAIR_COUNT = 29;
+const STAIR_RUN = 19 / STAIR_COUNT;
+const STAIR_RISE = -SUBWAY_PLATFORM_HEIGHT / STAIR_COUNT;
 
 const shellMaterial = new THREE.MeshStandardMaterial({
   color: 0xe7e5d8,
@@ -93,18 +102,42 @@ export class TrainService {
     sleepers.instanceMatrix.needsUpdate = true;
     track.add(sleepers);
 
-    const pillarGeo = new THREE.BoxGeometry(0.9, RAIL_HEIGHT - 0.6, 0.9);
-    const pillarMaterial = new THREE.MeshStandardMaterial({ color: 0x777d7d, roughness: 0.9 });
+    const deck = new THREE.Mesh(
+      new THREE.BoxGeometry(4.6, 0.28, length),
+      new THREE.MeshStandardMaterial({ color: 0x777d7d, roughness: 0.9 })
+    );
+    deck.position.set(EAST_ROAD_X, RAIL_HEIGHT - 0.46, (RAIL_START + RAIL_END) / 2);
+    deck.receiveShadow = true;
+    track.add(deck);
     for (const side of [-1, 1]) {
-      const count = Math.floor(length / 42);
-      const pillars = new THREE.InstancedMesh(pillarGeo, pillarMaterial, count);
-      for (let i = 0; i < count; i += 1) {
-        position.set(EAST_ROAD_X + side * 11.4, (RAIL_HEIGHT - 0.6) / 2, RAIL_START + i * 42);
-        matrix.compose(position, quaternion, scale);
-        pillars.setMatrixAt(i, matrix);
-      }
-      pillars.instanceMatrix.needsUpdate = true;
-      track.add(pillars);
+      const girder = new THREE.Mesh(
+        new THREE.BoxGeometry(0.65, 0.9, length),
+        new THREE.MeshStandardMaterial({ color: 0x686f70, roughness: 0.9 })
+      );
+      girder.position.set(
+        EAST_ROAD_X + side * 1.65,
+        RAIL_HEIGHT - 1.05,
+        (RAIL_START + RAIL_END) / 2
+      );
+      girder.receiveShadow = true;
+      track.add(girder);
+    }
+
+    const tunnelConcrete = new THREE.MeshStandardMaterial({ color: 0x686f70, roughness: 0.94 });
+    const tunnelFloor = new THREE.Mesh(new THREE.BoxGeometry(20, 0.55, length), tunnelConcrete);
+    tunnelFloor.position.set(EAST_ROAD_X, RAIL_HEIGHT - 1.25, (RAIL_START + RAIL_END) / 2);
+    tunnelFloor.receiveShadow = true;
+    track.add(tunnelFloor);
+    const tunnelWallGeo = new THREE.BoxGeometry(0.65, 5.8, length);
+    const tunnelRoof = new THREE.Mesh(new THREE.BoxGeometry(20, 0.45, length), tunnelConcrete);
+    tunnelRoof.position.set(EAST_ROAD_X, -0.37, (RAIL_START + RAIL_END) / 2);
+    tunnelRoof.receiveShadow = true;
+    track.add(tunnelRoof);
+    for (const side of [-1, 1]) {
+      const wall = new THREE.Mesh(tunnelWallGeo, tunnelConcrete);
+      wall.position.set(EAST_ROAD_X + side * 9.6, -3.27, (RAIL_START + RAIL_END) / 2);
+      wall.receiveShadow = true;
+      track.add(wall);
     }
     this.scene.add(track);
   }
@@ -112,13 +145,16 @@ export class TrainService {
   private buildStations(): void {
     for (const station of this.city.railStations) {
       const group = new THREE.Group();
-      const platform = new THREE.Mesh(
-        new THREE.BoxGeometry(19, 0.48, 25),
-        new THREE.MeshStandardMaterial({ color: 0x71777a, roughness: 0.87 })
-      );
-      platform.position.set(station.x, RAIL_HEIGHT - 0.95, station.z);
-      platform.receiveShadow = true;
-      group.add(platform);
+      const platformMaterial = new THREE.MeshStandardMaterial({ color: 0x71777a, roughness: 0.87 });
+      for (const side of [-1, 1]) {
+        const platform = new THREE.Mesh(
+          new THREE.BoxGeometry(4.5, 0.48, 25),
+          platformMaterial
+        );
+        platform.position.set(station.x + side * 4.5, RAIL_HEIGHT - 0.95, station.z);
+        platform.receiveShadow = true;
+        group.add(platform);
+      }
 
       const canopy = new THREE.Mesh(
         new THREE.BoxGeometry(17, 0.24, 18),
@@ -132,25 +168,54 @@ export class TrainService {
           new THREE.BoxGeometry(0.34, 3.0, 0.34),
           railMaterial
         );
-        support.position.set(station.x + side * 7.7, RAIL_HEIGHT + 0.9, station.z);
+        support.position.set(station.x + side * 8.6, RAIL_HEIGHT + 0.9, station.z);
         group.add(support);
 
         if (side === 1) {
-          for (let step = 0; step < 17; step += 1) {
-            const progress = step / 16;
+          for (let step = 0; step < STAIR_COUNT; step += 1) {
             const stair = new THREE.Mesh(
-              new THREE.BoxGeometry(0.54, 0.18, 1.5),
+              new THREE.BoxGeometry(1.7, 0.16, STAIR_RUN + 0.04),
               new THREE.MeshStandardMaterial({ color: 0x9ca1a1, roughness: 0.8 })
             );
             stair.position.set(
-              station.accessX + (station.x + side * 7.7 - station.accessX) * progress,
-              0.18 + step * 0.34,
-              station.accessZ - progress * 8
+              station.accessX,
+              -step * STAIR_RISE - 0.08,
+              station.accessZ - (step + 0.5) * STAIR_RUN
             );
             group.add(stair);
           }
+
+          const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x565e62, roughness: 0.9 });
+          for (const wallSide of [-1, 1]) {
+            const wall = new THREE.Mesh(
+              new THREE.BoxGeometry(0.24, -SUBWAY_PLATFORM_HEIGHT, STAIR_COUNT * STAIR_RUN),
+              wallMaterial
+            );
+            wall.position.set(
+              station.accessX + wallSide * 1.38,
+              SUBWAY_PLATFORM_HEIGHT / 2,
+              station.accessZ - STAIR_COUNT * STAIR_RUN / 2
+            );
+            group.add(wall);
+          }
+
+          const landing = new THREE.Mesh(
+            new THREE.BoxGeometry(5.4, 0.16, 2.8),
+            platformMaterial
+          );
+          landing.position.set(
+            station.accessX - 2.7,
+            SUBWAY_PLATFORM_HEIGHT - 0.08,
+            station.z - 1.2
+          );
+          landing.receiveShadow = true;
+          group.add(landing);
         }
       }
+
+      const light = new THREE.PointLight(0xffd88a, 2.2, 18, 2);
+      light.position.set(station.x, RAIL_HEIGHT + 2.9, station.z);
+      group.add(light);
 
       const sign = new THREE.Mesh(
         new THREE.BoxGeometry(4.4, 1.05, 0.2),
@@ -158,7 +223,7 @@ export class TrainService {
       );
       sign.position.set(station.accessX, 2.3, station.accessZ);
       group.add(sign);
-      const label = this.makeLabel(station.label);
+      const label = this.makeLabel(`METRO · ${station.label}`);
       label.position.set(station.accessX, 2.3, station.accessZ + 0.12);
       group.add(label);
       this.scene.add(group);

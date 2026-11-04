@@ -90,7 +90,7 @@ export class GameAudio {
     return Boolean(this.ctx);
   }
 
-  shot(weapon: 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'melee'): void {
+  shot(weapon: 'pistol' | 'revolver' | 'smg' | 'shotgun' | 'rifle' | 'carbine' | 'melee'): void {
     if (weapon === 'melee') {
       this.burst(0.08, 0.06, 900);
       return;
@@ -100,7 +100,7 @@ export class GameAudio {
       this.tone(90, 0.14, 0.16, 'sawtooth', 45);
       return;
     }
-    if (weapon === 'rifle') {
+    if (weapon === 'rifle' || weapon === 'carbine') {
       this.burst(0.12, 0.22, 2200);
       this.tone(130, 0.1, 0.14, 'square', 55);
       return;
@@ -108,6 +108,11 @@ export class GameAudio {
     if (weapon === 'smg') {
       this.burst(0.06, 0.12, 2000);
       this.tone(180, 0.05, 0.09, 'square', 90);
+      return;
+    }
+    if (weapon === 'revolver') {
+      this.burst(0.11, 0.2, 1700);
+      this.tone(125, 0.08, 0.11, 'square', 60);
       return;
     }
     this.burst(0.09, 0.16, 1800);

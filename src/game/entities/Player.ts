@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { CharacterRig, HumanoidAnimator, createCharacter } from './CharacterModel';
+import {
+  copyPlayerAppearance,
+  DEFAULT_PLAYER_APPEARANCE,
+  type PlayerAppearance
+} from './PlayerAppearance';
 import type { WeaponId } from '../combat/Weapons';
 
 export interface PlayerMoveInput {
@@ -10,8 +15,9 @@ export interface PlayerMoveInput {
 }
 
 export class Player {
-  readonly rig: CharacterRig;
-  readonly group: THREE.Group;
+  rig: CharacterRig;
+  readonly group = new THREE.Group();
+  appearance: PlayerAppearance;
   readonly velocity = new THREE.Vector3();
   yaw = Math.PI;
   speed = 0;
@@ -30,6 +36,9 @@ export class Player {
   private flashTimer = 0;
   private verticalVelocity = 0;
   private gun = new THREE.Group();
+  private pistolModel = new THREE.Group();
+  private revolverModel = new THREE.Group();
+  private carbineModel = new THREE.Group();
   private machete = new THREE.Group();
   private currentWeapon: WeaponId = 'pistol';
   private muzzleFlash = new THREE.Mesh();
@@ -37,31 +46,88 @@ export class Player {
   private muzzleWorld = new THREE.Vector3();
   private riding = false;
 
-  constructor() {
-    this.rig = createCharacter(
+  constructor(appearance: PlayerAppearance = DEFAULT_PLAYER_APPEARANCE) {
+    this.appearance = copyPlayerAppearance(appearance);
+    this.rig = this.createRig(this.appearance);
+    this.group.add(this.rig.group);
+    this.group.rotation.y = this.yaw;
+    this.buildGun();
+    this.buildMachete();
+    this.setWeapon('pistol');
+  }
+
+  private createRig(appearance: PlayerAppearance): CharacterRig {
+    const northernCap = appearance.headwear === 'northern-cap';
+    const headwrap = appearance.headwear === 'headwrap';
+    const reflectiveVest = appearance.outfit === 'agbero-vest';
+    return createCharacter(
       {
-        skin: 0x8a5a3a,
-        shirt: 0xe9e5d9,
-        pants: 0x2f4a78,
-        shoes: 0xeceae2,
+        skin: appearance.skinTone,
+        shirt: appearance.shirtColor,
+        pants: appearance.pantsColor,
+        shoes: appearance.shoesColor,
         accent: 0xf2f0e6,
         hair: 0x14100d,
         chain: 0xd9b44a
       },
       1.82,
       {
-        build: 1.03,
-        sleeves: 'tank',
-        bottoms: 'long',
-        hairStyle: 'fade',
-        beard: true
+        build: 1.02,
+        bodyType: appearance.bodyType,
+        outfit: appearance.outfit,
+        footwear: appearance.footwear,
+        sleeves: appearance.outfit === 'senator' ? 'long' : 'short',
+        bottoms: appearance.bottoms,
+        hairStyle: appearance.hairStyle,
+        cap: appearance.headwear === 'snapback' || northernCap,
+        capStyle: northernCap ? 'northern' : 'snapback',
+        capColor: northernCap ? 0xe5dfcf : 0x145b40,
+        headwrap,
+        headwrapColor: 0xd4a12f,
+        beard: appearance.facialHair === 'beard',
+        stubble: appearance.facialHair === 'stubble',
+        glasses: appearance.glasses,
+        vest: reflectiveVest,
+        reflectiveVest,
+        vestColor: 0xd7d33c,
+        print: appearance.outfit === 'graphic-tee' ? 0x202126 : undefined
       }
     );
-    this.group = this.rig.group;
-    this.group.rotation.y = this.yaw;
-    this.buildGun();
-    this.buildMachete();
-    this.setWeapon('pistol');
+  }
+
+  setAppearance(appearance: PlayerAppearance): void {
+    const current = this.appearance;
+    if (
+      current.bodyType === appearance.bodyType &&
+      current.outfit === appearance.outfit &&
+      current.shirtColor === appearance.shirtColor &&
+      current.pantsColor === appearance.pantsColor &&
+      current.bottoms === appearance.bottoms &&
+      current.footwear === appearance.footwear &&
+      current.shoesColor === appearance.shoesColor &&
+      current.skinTone === appearance.skinTone &&
+      current.headwear === appearance.headwear &&
+      current.hairStyle === appearance.hairStyle &&
+      current.facialHair === appearance.facialHair &&
+      current.glasses === appearance.glasses
+    ) {
+      return;
+    }
+
+    const previousRig = this.rig;
+    this.gun.removeFromParent();
+    this.machete.removeFromParent();
+    this.group.remove(previousRig.group);
+    previousRig.group.traverse((object) => {
+      if (object instanceof THREE.Mesh) object.geometry.dispose();
+    });
+
+    this.appearance = copyPlayerAppearance(appearance);
+    this.rig = this.createRig(this.appearance);
+    this.group.add(this.rig.group);
+    this.rig.rightElbow.add(this.gun, this.machete);
+    this.setWeapon(this.currentWeapon);
+    this.animator.update(this.rig, 0, 0, 6.4);
   }
 
   private buildGun(): void {
@@ -70,14 +136,14 @@ export class Player {
     const grip = new THREE.Mesh(new RoundedBoxGeometry(0.042, 0.1, 0.055, 2, 0.012), new THREE.MeshStandardMaterial({ color: dark, roughness: 0.75 }));
     grip.position.set(0, 0.02, -0.015);
     grip.rotation.x = 0.32;
-    this.gun.add(grip);
+    this.pistolModel.add(grip);
     const slide = new THREE.Mesh(new RoundedBoxGeometry(0.038, 0.17, 0.042, 2, 0.01), new THREE.MeshStandardMaterial({ color: metal, roughness: 0.45, metalness: 0.55 }));
     slide.position.set(0, -0.06, 0.01);
-    this.gun.add(slide);
+    this.pistolModel.add(slide);
     const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.05, 8), new THREE.MeshStandardMaterial({ color: 0x111214, roughness: 0.4, metalness: 0.6 }));
     barrel.rotation.x = Math.PI / 2;
     barrel.position.set(0, -0.06, 0.04);
-    this.gun.add(barrel);
+    this.pistolModel.add(barrel);
 
     this.muzzleAnchor.position.set(0, -0.06, 0.075);
     this.gun.add(this.muzzleAnchor);
@@ -89,9 +155,81 @@ export class Player {
     this.muzzleFlash.visible = false;
     this.muzzleAnchor.add(this.muzzleFlash);
 
+    const revolverGrip = new THREE.Mesh(
+      new RoundedBoxGeometry(0.055, 0.13, 0.055, 2, 0.012),
+      new THREE.MeshStandardMaterial({ color: dark, roughness: 0.8 })
+    );
+    revolverGrip.position.set(0, -0.13, -0.005);
+    this.revolverModel.add(revolverGrip);
+    const revolverDrum = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.042, 0.042, 0.065, 12),
+      new THREE.MeshStandardMaterial({ color: metal, roughness: 0.42, metalness: 0.55 })
+    );
+    revolverDrum.rotation.x = Math.PI / 2;
+    revolverDrum.position.set(0, -0.045, 0.005);
+    this.revolverModel.add(revolverDrum);
+    const revolverBarrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.012, 0.012, 0.17, 8),
+      new THREE.MeshStandardMaterial({ color: metal, roughness: 0.42, metalness: 0.58 })
+    );
+    revolverBarrel.rotation.x = Math.PI / 2;
+    revolverBarrel.position.set(0, -0.035, 0.12);
+    this.revolverModel.add(revolverBarrel);
+    const revolverHammer = new THREE.Mesh(
+      new RoundedBoxGeometry(0.035, 0.045, 0.045, 2, 0.008),
+      new THREE.MeshStandardMaterial({ color: dark, roughness: 0.75 })
+    );
+    revolverHammer.position.set(0, 0.025, -0.055);
+    this.revolverModel.add(revolverHammer);
+
+    const carbineMaterial = new THREE.MeshStandardMaterial({
+      color: metal,
+      roughness: 0.48,
+      metalness: 0.38
+    });
+    const carbineReceiver = new THREE.Mesh(
+      new RoundedBoxGeometry(0.055, 0.075, 0.22, 3, 0.014),
+      carbineMaterial
+    );
+    carbineReceiver.position.set(0, -0.055, 0.045);
+    this.carbineModel.add(carbineReceiver);
+    const carbineBarrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.012, 0.014, 0.31, 8),
+      carbineMaterial
+    );
+    carbineBarrel.rotation.x = Math.PI / 2;
+    carbineBarrel.position.set(0, -0.045, 0.295);
+    this.carbineModel.add(carbineBarrel);
+    const carbineHandguard = new THREE.Mesh(
+      new RoundedBoxGeometry(0.065, 0.075, 0.18, 3, 0.012),
+      new THREE.MeshStandardMaterial({ color: 0x292d31, roughness: 0.82 })
+    );
+    carbineHandguard.position.set(0, -0.055, 0.21);
+    this.carbineModel.add(carbineHandguard);
+    const carbineStock = new THREE.Mesh(
+      new RoundedBoxGeometry(0.052, 0.085, 0.16, 3, 0.014),
+      new THREE.MeshStandardMaterial({ color: 0x25292e, roughness: 0.82 })
+    );
+    carbineStock.position.set(0, -0.075, -0.16);
+    this.carbineModel.add(carbineStock);
+    const carbineMagazine = new THREE.Mesh(
+      new RoundedBoxGeometry(0.052, 0.13, 0.075, 3, 0.01),
+      new THREE.MeshStandardMaterial({ color: 0x202327, roughness: 0.8 })
+    );
+    carbineMagazine.position.set(0, -0.15, 0.035);
+    carbineMagazine.rotation.x = -0.08;
+    this.carbineModel.add(carbineMagazine);
+    const carbineSight = new THREE.Mesh(
+      new RoundedBoxGeometry(0.028, 0.035, 0.055, 2, 0.006),
+      carbineMaterial
+    );
+    carbineSight.position.set(0, 0.005, 0.075);
+    this.carbineModel.add(carbineSight);
+
     this.gun.position.set(0, -0.26, 0.11);
     this.gun.rotation.x = -0.15;
     this.gun.visible = this.armed;
+    this.gun.add(this.pistolModel, this.revolverModel, this.carbineModel);
     this.rig.rightElbow.add(this.gun);
   }
 
@@ -129,6 +267,9 @@ export class Player {
     this.gun.scale.set(1, 1, 1);
     this.gun.position.set(0, -0.26, 0.11);
     this.muzzleAnchor.position.set(0, -0.06, 0.075);
+    this.pistolModel.visible = id !== 'revolver' && id !== 'carbine';
+    this.revolverModel.visible = id === 'revolver';
+    this.carbineModel.visible = id === 'carbine';
     if (id === 'smg') {
       this.gun.scale.set(1.04, 1.05, 1.4);
       this.gun.position.set(0, -0.27, 0.14);
@@ -141,6 +282,13 @@ export class Player {
       this.gun.scale.set(1.0, 1.12, 2.1);
       this.gun.position.set(0, -0.27, 0.26);
       this.muzzleAnchor.position.set(0, -0.06, 0.1);
+    } else if (id === 'revolver') {
+      this.gun.position.set(0, -0.26, 0.11);
+      this.muzzleAnchor.position.set(0, -0.035, 0.22);
+    } else if (id === 'carbine') {
+      this.gun.scale.set(1.05, 1.05, 1.1);
+      this.gun.position.set(0, -0.27, 0.14);
+      this.muzzleAnchor.position.set(0, -0.045, 0.49);
     }
   }
 

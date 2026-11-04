@@ -93,6 +93,7 @@ export interface ParkingSpace {
   x: number;
   z: number;
   yaw: number;
+  surfaceY: number;
 }
 
 export interface City {
@@ -128,6 +129,103 @@ export interface City {
   /** Height of an elevated road at a point, optionally for its travel axis. */
   deckHeightAt(x: number, z: number, axis?: 'x' | 'z', referenceY?: number): number;
   districtAt(x: number, z: number): string;
+}
+
+export function constrainVehicleToBridge(
+  position: THREE.Vector3,
+  halfWidthX: number,
+  halfWidthZ: number
+): void {
+  const highBridgeRailZ = CROSS_HALF + 3;
+  for (const crossing of HIGH_BRIDGE_CROSSINGS) {
+    const deckY = highBridgeDeckY(position.x, crossing);
+    if (
+      deckY <= 0 ||
+      Math.abs(position.y - deckY) > 1.25 ||
+      Math.abs(position.z - crossing) > highBridgeRailZ + halfWidthZ
+    ) continue;
+    const maxOffset = highBridgeRailZ - 0.1 - halfWidthZ;
+    position.z = crossing + Math.sign(position.z - crossing || 1) *
+      Math.min(Math.abs(position.z - crossing), maxOffset);
+    return;
+  }
+
+  if (
+    position.x >= WEST_DISTRICT_MAX_X &&
+    position.x <= WEST_SHORE_X &&
+    Math.abs(position.y) <= 1.25
+  ) {
+    for (const crossing of CROSS_ZS) {
+      if (HIGH_BRIDGE_CROSSINGS.includes(crossing)) continue;
+      const railZ = CROSS_HALF + 3.1;
+      if (Math.abs(position.z - crossing) > railZ + halfWidthZ) continue;
+      const maxOffset = railZ - 0.1 - halfWidthZ;
+      position.z = crossing + Math.sign(position.z - crossing || 1) *
+        Math.min(Math.abs(position.z - crossing), maxOffset);
+    }
+  }
+
+  if (
+    position.x >= RIVER_MIN_X - 5 &&
+    position.x <= RIVER_MAX_X + 5 &&
+    Math.abs(position.y) <= 1.25
+  ) {
+    for (const crossing of CROSS_ZS) {
+      const railZ = CROSS_HALF + 2.1;
+      if (Math.abs(position.z - crossing) > railZ + halfWidthZ) continue;
+      const maxOffset = railZ - 0.32 - halfWidthZ;
+      position.z = crossing + Math.sign(position.z - crossing || 1) *
+        Math.min(Math.abs(position.z - crossing), maxOffset);
+    }
+  }
+
+  const mainCausewayY = causewayDeckY(CAUSEWAY_X, position.z);
+  if (
+    mainCausewayY > 0 &&
+    Math.abs(position.y - mainCausewayY) <= 1.25 &&
+    Math.abs(position.x - CAUSEWAY_X) <= CAUSEWAY_HALF_W + halfWidthX
+  ) {
+    const maxOffset = CAUSEWAY_HALF_W - 0.5 - halfWidthX;
+    position.x = CAUSEWAY_X + Math.sign(position.x - CAUSEWAY_X || 1) *
+      Math.min(Math.abs(position.x - CAUSEWAY_X), maxOffset);
+  }
+
+  for (const approachZ of CAUSEWAY_APPROACH_ZS) {
+    const approachY = causewayDeckY(position.x, approachZ);
+    if (
+      approachY <= 0 ||
+      Math.abs(position.y - approachY) > 1.25 ||
+      Math.abs(position.z - approachZ) > CAUSEWAY_HALF_W + halfWidthZ
+    ) continue;
+    const maxOffset = CAUSEWAY_HALF_W - 0.5 - halfWidthZ;
+    position.z = approachZ + Math.sign(position.z - approachZ || 1) *
+      Math.min(Math.abs(position.z - approachZ), maxOffset);
+  }
+}
+
+export function constrainPlayerToFootbridge(position: THREE.Vector3, radius: number): void {
+  if (
+    Math.abs(position.y - FOOTBRIDGE_DECK_Y) > 0.85 ||
+    Math.abs(position.z - FOOTBRIDGE_Z) > FOOTBRIDGE_DECK_HALF_Z + radius
+  ) return;
+
+  position.x = THREE.MathUtils.clamp(
+    position.x,
+    -FOOTBRIDGE_DECK_HALF_X + radius,
+    FOOTBRIDGE_DECK_HALF_X - radius
+  );
+  const onStairLane = [-1, 1].some(
+    (side) =>
+      Math.abs(position.x - side * FOOTBRIDGE_STAIR_X) <=
+      FOOTBRIDGE_STAIR_HALF_W - radius
+  );
+  if (!onStairLane) {
+    position.z = THREE.MathUtils.clamp(
+      position.z,
+      FOOTBRIDGE_Z - FOOTBRIDGE_DECK_HALF_Z + radius,
+      FOOTBRIDGE_Z + FOOTBRIDGE_DECK_HALF_Z - radius
+    );
+  }
 }
 
 // Wide six-lane boulevard with a proper city grid around it.
@@ -170,6 +268,16 @@ export const HIGH_BRIDGE_APPROACH_LENGTH = 80;
 export const HIGH_BRIDGE_DECK_Y = 9.2;
 export const HIGH_BRIDGE_WEST_END_X = WEST_DISTRICT_MAX_X - HIGH_BRIDGE_APPROACH_LENGTH;
 export const HIGH_BRIDGE_EAST_END_X = WEST_SHORE_X + HIGH_BRIDGE_APPROACH_LENGTH;
+export const SUBWAY_RAIL_HEIGHT = -4.6;
+export const SUBWAY_PLATFORM_HEIGHT = SUBWAY_RAIL_HEIGHT - 0.71;
+const SUBWAY_STAIR_BOTTOM_Z_OFFSET = -1;
+const SUBWAY_STAIR_HALF_WIDTH = 1.25;
+const SUBWAY_ENTRANCE_HALF_WIDTH = 1.6;
+const RAIL_STATIONS: RailStation[] = [
+  { id: 'kano-central', label: 'KANO CENTRAL', x: EAST_ROAD_X, z: -336, accessX: EAST_ROAD_X + 12, accessZ: -318 },
+  { id: 'kofar-wambai-rail', label: 'KOFAR WAMBAI', x: EAST_ROAD_X, z: -12, accessX: EAST_ROAD_X + 12, accessZ: 6 },
+  { id: 'sabon-gari-rail', label: 'SABON GARI', x: EAST_ROAD_X, z: 264, accessX: EAST_ROAD_X + 12, accessZ: 282 }
+];
 export const SIDE_ROADS = [
   -624,
   -552,
@@ -279,16 +387,15 @@ function bridgeDeckYAt(
       x >= CAUSEWAY_X - CAUSEWAY_HALF_W &&
       x < WEST_SHORE_X
   );
-  const followsCauseway =
-    (onMainCauseway && axis === 'z') ||
-    (onCausewayApproach && axis === 'x') ||
-    (referenceY !== undefined && Math.abs(causewayY - referenceY) <= 0.75);
+  const followsCauseway = referenceY !== undefined
+    ? Math.abs(causewayY - referenceY) <= 0.75
+    : (onMainCauseway && axis === 'z') || (onCausewayApproach && axis === 'x');
   const selectedCausewayY = causewayY > 0 && followsCauseway ? causewayY : 0;
 
   const candidateHighBridgeY = highBridgeDeckY(x, z);
-  const followsHighBridge =
-    axis !== 'z' ||
-    (referenceY !== undefined && Math.abs(candidateHighBridgeY - referenceY) <= 0.75);
+  const followsHighBridge = referenceY !== undefined
+    ? Math.abs(candidateHighBridgeY - referenceY) <= 0.75
+    : axis === 'x' && (x < WEST_DISTRICT_MAX_X || x > WEST_SHORE_X);
   const highBridgeY =
     candidateHighBridgeY > 0 && followsHighBridge ? candidateHighBridgeY : 0;
 
@@ -1382,6 +1489,22 @@ export function createCity(): City {
       buildShell: meta.buildShell
     };
   });
+  const garageSite = sites.find((site) => site.kind === 'garage');
+  if (!garageSite) throw new Error('Garage site is required to build its forecourt');
+  const garageFrontX = garageSite.entranceX + garageSite.side * 1.9;
+  const garageSidewalkWidth = 2.1;
+  const garageForecourtRoadEdgeX = garageSite.side * (
+    ROAD_HALF + 0.3 + garageSidewalkWidth
+  );
+  const forecourtWidth = Math.abs(garageFrontX - garageForecourtRoadEdgeX);
+  const forecourtX = (garageFrontX + garageForecourtRoadEdgeX) / 2;
+  const parkingStartZ = garageSite.z - 38;
+  const parkingEndZ = garageSite.z + 46;
+  const drivewayStartZ = garageSite.z - 3.1;
+  const drivewayEndZ = garageSite.z + 3.1;
+  const forecourtCenterY = 0.22;
+  const forecourtHeight = 0.12;
+  const forecourtSurfaceY = forecourtCenterY + forecourtHeight / 2;
 
   // Ground is split at the river so the water is not hidden under a plane, and
   // it stops at the west shoreline so the open ocean is left uncovered.
@@ -1408,15 +1531,51 @@ export function createCity(): City {
   );
   westDistrictGround.receiveShadow = true;
   group.add(westDistrictGround);
-  const eastGroundWidth = WORLD_HALF_X + GROUND_EXTRA - RIVER_MAX_X;
-  const eastGround = new THREE.Mesh(
-    new THREE.PlaneGeometry(eastGroundWidth, ROAD_LENGTH + GROUND_EXTRA * 2),
-    mat(0x8b806a, 1)
-  );
-  eastGround.rotation.x = -Math.PI / 2;
-  eastGround.position.set(RIVER_MAX_X + eastGroundWidth / 2, -0.04, 0);
-  eastGround.receiveShadow = true;
-  group.add(eastGround);
+  const eastGroundMinX = RIVER_MAX_X;
+  const eastGroundMaxX = WORLD_HALF_X + GROUND_EXTRA;
+  const eastGroundMinZ = -half - GROUND_EXTRA;
+  const eastGroundMaxZ = half + GROUND_EXTRA;
+  const subwayOpenings = RAIL_STATIONS.map((station) => ({
+    minX: station.accessX - SUBWAY_ENTRANCE_HALF_WIDTH,
+    maxX: station.accessX + SUBWAY_ENTRANCE_HALF_WIDTH,
+    minZ: station.z + SUBWAY_STAIR_BOTTOM_Z_OFFSET,
+    maxZ: station.accessZ
+  }));
+  const groundCutsX = [
+    eastGroundMinX,
+    eastGroundMaxX,
+    ...subwayOpenings.flatMap((opening) => [opening.minX, opening.maxX])
+  ].sort((a, b) => a - b);
+  const groundCutsZ = [
+    eastGroundMinZ,
+    eastGroundMaxZ,
+    ...subwayOpenings.flatMap((opening) => [opening.minZ, opening.maxZ])
+  ].sort((a, b) => a - b);
+  const eastGroundMaterial = mat(0x8b806a, 1);
+  for (let xIndex = 0; xIndex < groundCutsX.length - 1; xIndex += 1) {
+    const minX = groundCutsX[xIndex];
+    const maxX = groundCutsX[xIndex + 1];
+    if (maxX <= eastGroundMinX || minX >= eastGroundMaxX || maxX - minX < 0.01) continue;
+    for (let zIndex = 0; zIndex < groundCutsZ.length - 1; zIndex += 1) {
+      const minZ = groundCutsZ[zIndex];
+      const maxZ = groundCutsZ[zIndex + 1];
+      if (maxZ <= eastGroundMinZ || minZ >= eastGroundMaxZ || maxZ - minZ < 0.01) continue;
+      const centerX = (minX + maxX) / 2;
+      const centerZ = (minZ + maxZ) / 2;
+      if (subwayOpenings.some((opening) =>
+        centerX > opening.minX && centerX < opening.maxX &&
+        centerZ > opening.minZ && centerZ < opening.maxZ
+      )) continue;
+      const groundTile = new THREE.Mesh(
+        new THREE.PlaneGeometry(maxX - minX, maxZ - minZ),
+        eastGroundMaterial
+      );
+      groundTile.rotation.x = -Math.PI / 2;
+      groundTile.position.set(centerX, -0.04, centerZ);
+      groundTile.receiveShadow = true;
+      group.add(groundTile);
+    }
+  }
 
   // ------------------------------------------------------------------ ocean
   // Deep ocean beyond the city edges and across the whole western strip. The
@@ -1740,15 +1899,61 @@ export function createCity(): City {
   }
 
   // --- Curbs and sidewalks.
-  box(0x928b7c, 0.95, 0.34, 0.18, ROAD_LENGTH, -ROAD_HALF - 0.17, 0.09, 0);
-  box(0x928b7c, 0.95, 0.34, 0.18, ROAD_LENGTH, ROAD_HALF + 0.17, 0.09, 0);
+  for (const side of [-1, 1]) {
+    const curbX = side * (ROAD_HALF + 0.17);
+    if (side !== garageSite.side) {
+      box(0x928b7c, 0.95, 0.34, 0.18, ROAD_LENGTH, curbX, 0.09, 0);
+      continue;
+    }
+    for (const [start, end] of [
+      [-half, drivewayStartZ],
+      [drivewayEndZ, half]
+    ]) {
+      if (end <= start) continue;
+      box(0x928b7c, 0.95, 0.34, 0.18, end - start, curbX, 0.09, (start + end) / 2);
+    }
+  }
 
   for (let z = -half; z < half; z += 12) {
     const slabZ = z + 6;
+    const slabEnd = z + 12;
     const shade = Math.abs(z / 12) % 2 === 0 ? 0xaba494 : 0xb2ab9b;
     if (!nearCross(slabZ, 5)) {
-      box(shade, 0.95, 6.0, 0.18, 12, -ROAD_HALF - 3.3, 0.09, slabZ);
-      box(shade, 0.95, 6.0, 0.18, 12, ROAD_HALF + 3.3, 0.09, slabZ);
+      for (const side of [-1, 1]) {
+        const fullWidth = 6.0;
+        const fullCenterX = side * (ROAD_HALF + 3.3);
+        const sections = side === garageSite.side
+          ? [
+              { start: z, end: Math.min(slabEnd, parkingStartZ), width: fullWidth, centerX: fullCenterX },
+              {
+                start: Math.max(z, parkingStartZ),
+                end: Math.min(slabEnd, drivewayStartZ),
+                width: garageSidewalkWidth,
+                centerX: side * (ROAD_HALF + 0.3 + garageSidewalkWidth / 2)
+              },
+              {
+                start: Math.max(z, drivewayEndZ),
+                end: Math.min(slabEnd, parkingEndZ),
+                width: garageSidewalkWidth,
+                centerX: side * (ROAD_HALF + 0.3 + garageSidewalkWidth / 2)
+              },
+              { start: Math.max(z, parkingEndZ), end: slabEnd, width: fullWidth, centerX: fullCenterX }
+            ]
+          : [{ start: z, end: slabEnd, width: fullWidth, centerX: fullCenterX }];
+        for (const section of sections) {
+          if (section.end - section.start <= 0.01) continue;
+          box(
+            shade,
+            0.95,
+            section.width,
+            0.18,
+            section.end - section.start,
+            section.centerX,
+            0.09,
+            (section.start + section.end) / 2
+          );
+        }
+      }
       box(0x8f8879, 0.95, 0.4, 0.02, 12, -ROAD_HALF - 0.6, 0.185, slabZ);
       box(0x8f8879, 0.95, 0.4, 0.02, 12, ROAD_HALF + 0.6, 0.185, slabZ);
     }
@@ -1763,7 +1968,47 @@ export function createCity(): City {
       const cz = (z0 + z1) / 2;
       for (const dx of [-(halfWidth + 1.5), halfWidth + 1.5]) {
         const shade = Math.abs(Math.round(cz / 12)) % 2 === 0 ? 0xaba494 : 0xb2ab9b;
-        box(shade, 0.95, 3.0, 0.18, len, sx + dx, 0.09, cz);
+        const centreX = sx + dx;
+        if (sx === EAST_ROAD_X && dx > 0) {
+          const minX = centreX - 1.5;
+          const maxX = centreX + 1.5;
+          const cutsX = [
+            minX,
+            maxX,
+            ...subwayOpenings.flatMap((opening) =>
+              [opening.minX, opening.maxX].filter((edge) => edge > minX && edge < maxX)
+            )
+          ].sort((a, b) => a - b);
+          const cutsZ = [
+            z0,
+            z1,
+            ...subwayOpenings.flatMap((opening) =>
+              [opening.minZ, opening.maxZ].filter((edge) => edge > z0 && edge < z1)
+            )
+          ].sort((a, b) => a - b);
+          for (let xIndex = 0; xIndex < cutsX.length - 1; xIndex += 1) {
+            for (let zIndex = 0; zIndex < cutsZ.length - 1; zIndex += 1) {
+              const tileX = (cutsX[xIndex] + cutsX[xIndex + 1]) / 2;
+              const tileZ = (cutsZ[zIndex] + cutsZ[zIndex + 1]) / 2;
+              if (subwayOpenings.some((opening) =>
+                tileX > opening.minX && tileX < opening.maxX &&
+                tileZ > opening.minZ && tileZ < opening.maxZ
+              )) continue;
+              box(
+                shade,
+                0.95,
+                cutsX[xIndex + 1] - cutsX[xIndex],
+                0.18,
+                cutsZ[zIndex + 1] - cutsZ[zIndex],
+                tileX,
+                0.09,
+                tileZ
+              );
+            }
+          }
+        } else {
+          box(shade, 0.95, 3.0, 0.18, len, centreX, 0.09, cz);
+        }
       }
       box(0x8f8879, 0.95, 0.4, 0.02, len, sx - halfWidth - 0.55, 0.185, cz);
       box(0x8f8879, 0.95, 0.4, 0.02, len, sx + halfWidth + 0.55, 0.185, cz);
@@ -2442,19 +2687,34 @@ export function createCity(): City {
     { x: -584, z: -100 },
     { x: -584, z: 300 }
   ];
-  const westBusStations = [
+  const busStations = [
     { id: 'west-terminal', label: 'WEST BUS TERMINAL', x: -384, z: -258 },
     { id: 'kofar-wambai-stop', label: 'KOFAR WAMBAI STOP', x: -584, z: -60 },
-    { id: 'estate-terminal', label: 'ESTATE TERMINAL', x: -444, z: 220 }
-  ];
-  const railStations: RailStation[] = [
-    { id: 'kano-central', label: 'KANO CENTRAL', x: EAST_ROAD_X, z: -336, accessX: EAST_ROAD_X + 12, accessZ: -318 },
-    { id: 'kofar-wambai-rail', label: 'KOFAR WAMBAI', x: EAST_ROAD_X, z: -12, accessX: EAST_ROAD_X + 12, accessZ: 6 },
-    { id: 'sabon-gari-rail', label: 'SABON GARI', x: EAST_ROAD_X, z: 264, accessX: EAST_ROAD_X + 12, accessZ: 282 }
+    { id: 'estate-terminal', label: 'ESTATE TERMINAL', x: -444, z: 220 },
+    { id: 'bompai-terminal', label: 'BOMPAI CITY STOP', x: -220, z: -192 },
+    { id: 'dala-terminal', label: 'DALA BUS PARK', x: -198, z: -358 },
+    { id: 'kano-central-stop', label: 'KANO CENTRAL STOP', x: 224, z: -22 },
+    { id: 'kofar-wambai-east', label: 'KOFAR WAMBAI EAST', x: 334, z: 18 },
+    { id: 'tarauni-terminal', label: 'TARAUNI BUS TERMINAL', x: 454, z: 30 }
   ];
   const westEstate = westEstates[0];
-  const westBusStation = westBusStations[0];
-
+  const railStations = RAIL_STATIONS;
+  for (const station of railStations) {
+    colliders.push(
+      {
+        minX: station.accessX - SUBWAY_ENTRANCE_HALF_WIDTH - 0.25,
+        maxX: station.accessX - SUBWAY_STAIR_HALF_WIDTH,
+        minZ: station.z + SUBWAY_STAIR_BOTTOM_Z_OFFSET,
+        maxZ: station.accessZ
+      },
+      {
+        minX: station.accessX + SUBWAY_STAIR_HALF_WIDTH,
+        maxX: station.accessX + SUBWAY_ENTRANCE_HALF_WIDTH + 0.25,
+        minZ: station.z + SUBWAY_STAIR_BOTTOM_Z_OFFSET,
+        maxZ: station.accessZ
+      }
+    );
+  }
   const row = (
     side: number,
     baseX: number,
@@ -2479,14 +2739,23 @@ export function createCity(): City {
         const height = minHeight + rnd() * (maxHeight - minHeight);
         const x = side * (baseX + width / 2 + rnd() * 1.4);
         const centreZ = z + depth / 2;
+        if (RAIL_STATIONS.some(
+          (station) =>
+            Math.abs(x - station.accessX) < width / 2 + 2 &&
+            centreZ > station.z - 3 &&
+            centreZ < station.accessZ + 3
+        )) {
+          z += depth + gap;
+          continue;
+        }
         if (
           side === -1 &&
           baseX > 350 &&
           (westEstates.some(
             (estate) => Math.abs(x - estate.x) < 26 && Math.abs(centreZ - estate.z) < 22
           ) ||
-            westBusStations.some(
-              (station) => Math.abs(x - station.x) < 16 && Math.abs(centreZ - station.z) < 15
+            busStations.some(
+              (station) => Math.abs(x - station.x) < 16 && Math.abs(centreZ - station.z) < 22
             ))
         ) {
           z += depth + gap;
@@ -2541,8 +2810,8 @@ export function createCity(): City {
           const centreZ = cz + side * (CROSS_HALF + 4 + depth / 2);
           const reserved = westEstates.some(
             (estate) => Math.abs(centreX - estate.x) < 27 && Math.abs(centreZ - estate.z) < 22
-          ) || westBusStations.some(
-            (station) => Math.abs(centreX - station.x) < 16 && Math.abs(centreZ - station.z) < 15
+          ) || busStations.some(
+            (station) => Math.abs(centreX - station.x) < 16 && Math.abs(centreZ - station.z) < 22
           );
           if (reserved) continue;
           addBuilding(
@@ -2657,32 +2926,31 @@ export function createCity(): City {
     }
   }
 
-  // Covered bus terminal serving the new district.
-  box(0x494b4b, 0.9, 15, 0.22, 21, westBusStation.x, 3.45, westBusStation.z);
-  box(0x273b4a, 0.7, 15.4, 0.24, 1.0, westBusStation.x, 3.45, westBusStation.z + 10.4);
-  for (const x of [westBusStation.x - 6.7, westBusStation.x + 6.7]) {
-    for (const z of [westBusStation.z - 9, westBusStation.z + 9]) {
-      box(0x5b5e5e, 0.7, 0.18, 3.3, 0.18, x, 1.65, z);
-    }
-  }
-  box(0x8a6b45, 0.9, 8, 0.25, 1.2, westBusStation.x, 0.78, westBusStation.z - 4.8);
-  box(0x2f6fa8, 0.6, 4.2, 1.8, 0.14, westBusStation.x, 2.45, westBusStation.z + 10.4);
-  box(0xe8e2cf, 0.95, 13, 0.06, 1.8, westBusStation.x, 0.04, westBusStation.z + 12);
-  box(0xe6c445, 0.95, 0.18, 0.03, 1.1, westBusStation.x - 5.5, 0.03, westBusStation.z + 12);
-  addSign(group, westBusStation.label, '#17364b', '#ffe08a', westBusStation.x, 4.2, westBusStation.z + 10.8, 0, 6);
-  for (const station of westBusStations.slice(1)) {
-    box(0x494b4b, 0.9, 15, 0.22, 21, station.x, 3.45, station.z);
-    box(0x273b4a, 0.7, 15.4, 0.24, 1, station.x, 3.45, station.z + 10.4);
-    for (const x of [station.x - 6.7, station.x + 6.7]) {
-      for (const z of [station.z - 9, station.z + 9]) {
-        box(0x5b5e5e, 0.7, 0.18, 3.3, 0.18, x, 1.65, z);
+  for (const station of busStations) {
+    box(0x494b4b, 0.9, 12, 0.22, 13, station.x, 3.45, station.z);
+    box(0x273b4a, 0.7, 12.4, 0.24, 0.8, station.x, 3.45, station.z + 6.5);
+    for (const dx of [-5.2, 5.2]) {
+      for (const dz of [-5.6, 5.6]) {
+        box(0x5b5e5e, 0.7, 0.18, 3.3, 0.18, station.x + dx, 1.65, station.z + dz);
+        colliders.push({
+          minX: station.x + dx - 0.22,
+          maxX: station.x + dx + 0.22,
+          minZ: station.z + dz - 0.22,
+          maxZ: station.z + dz + 0.22
+        });
       }
     }
-    box(0x8a6b45, 0.9, 8, 0.25, 1.2, station.x, 0.78, station.z - 4.8);
-    box(0x2f6fa8, 0.6, 4.2, 1.8, 0.14, station.x, 2.45, station.z + 10.4);
-    box(0xe8e2cf, 0.95, 13, 0.06, 1.8, station.x, 0.04, station.z + 12);
-    box(0xe6c445, 0.95, 0.18, 0.03, 1.1, station.x - 5.5, 0.03, station.z + 12);
-    addSign(group, station.label, '#17364b', '#ffe08a', station.x, 4.2, station.z + 10.8, 0, 6);
+    box(0x8a6b45, 0.9, 6.2, 0.25, 0.9, station.x, 0.78, station.z - 3.3);
+    colliders.push({
+      minX: station.x - 3.2,
+      maxX: station.x + 3.2,
+      minZ: station.z - 3.9,
+      maxZ: station.z - 2.7
+    });
+    box(0x2f6fa8, 0.6, 3.8, 1.8, 0.14, station.x, 2.45, station.z + 6.5);
+    box(0xe8e2cf, 0.95, 10, 0.06, 1.8, station.x, 0.04, station.z + 9.5);
+    box(0xe6c445, 0.95, 0.18, 0.03, 1.1, station.x - 4.2, 0.03, station.z + 9.5);
+    addSign(group, station.label, '#17364b', '#ffe08a', station.x, 4.2, station.z + 7, 0, 6);
   }
 
   // The east bank: a newer, taller grid reached over the river bridges.
@@ -2794,8 +3062,8 @@ export function createCity(): City {
     westEstates.some(
       (estate) => Math.abs(x - estate.x) < 26 && Math.abs(z - estate.z) < 22
     ) ||
-    westBusStations.some(
-      (station) => Math.abs(x - station.x) < 16 && Math.abs(z - station.z) < 15
+    busStations.some(
+      (station) => Math.abs(x - station.x) < 12 && Math.abs(z - station.z) < 22
     );
   const onStreet = (x: number, z: number): boolean =>
     Math.abs(x) < ROAD_HALF + 6 ||
@@ -3032,30 +3300,23 @@ export function createCity(): City {
     }
   }
 
-  const garageSite = sites.find((site) => site.kind === 'garage');
-  if (!garageSite) throw new Error('Garage site is required to build its forecourt');
-  const garageFrontX = garageSite.entranceX + garageSite.side * 1.9;
-  const garageRoadEdgeX = garageSite.side * (ROAD_HALF + 0.3);
-  const forecourtWidth = Math.abs(garageFrontX - garageRoadEdgeX);
-  const forecourtX = (garageFrontX + garageRoadEdgeX) / 2;
-  const parkingStartZ = garageSite.z - 36;
-  const parkingEndZ = garageSite.z + 36;
   box(
     0x55595a,
     0.95,
     forecourtWidth,
-    0.12,
+    forecourtHeight,
     parkingEndZ - parkingStartZ,
     forecourtX,
-    0.22,
+    forecourtCenterY,
     (parkingStartZ + parkingEndZ) / 2
   );
-  const parkingSpaces: ParkingSpace[] = [-30, -22, -14, 18, 26, 34].map((offset) => ({
+  const parkingSpaces: ParkingSpace[] = [-30, -22, 18, 26, 34, 42].map((offset) => ({
     x: forecourtX,
     z: garageSite.z + offset,
-    yaw: 0
+    yaw: 0,
+    surfaceY: forecourtSurfaceY
   }));
-  const parkingLineOffsets = [-38, -34, -26, -18, -10, 14, 22, 30, 38, 42];
+  const parkingLineOffsets = [-38, -34, -26, -18, -10, 14, 22, 30, 38, 46];
   for (const offset of parkingLineOffsets) {
     box(
       0xe8e2cf,
@@ -3069,6 +3330,16 @@ export function createCity(): City {
     );
   }
   const drivewayZ = garageSite.z;
+  box(
+    0x55595a,
+    0.95,
+    garageSidewalkWidth,
+    forecourtHeight,
+    drivewayEndZ - drivewayStartZ,
+    garageSite.side * (ROAD_HALF + 0.3 + garageSidewalkWidth / 2),
+    forecourtCenterY,
+    drivewayZ
+  );
   for (const zOffset of [-3.1, 3.1]) {
     box(
       0xe6c445,
@@ -3193,7 +3464,7 @@ export function createCity(): City {
     districts,
     atms,
     posStands,
-    transitStops: westBusStations,
+    transitStops: busStations,
     railStations,
     parkingSpaces,
     crossZs: CROSS_ZS,
@@ -3256,14 +3527,29 @@ export function createCity(): City {
     },
     isRoad: isRoadAt,
     groundHeightAt: (x: number, z: number, axis?: 'x' | 'z', referenceY?: number) => {
+      for (const station of railStations) {
+        if (
+          Math.abs(x - station.accessX) <= SUBWAY_STAIR_HALF_WIDTH &&
+          z >= station.z + SUBWAY_STAIR_BOTTOM_Z_OFFSET &&
+          z <= station.accessZ
+        ) {
+          const progress = (station.accessZ - z) / (station.accessZ - station.z - SUBWAY_STAIR_BOTTOM_Z_OFFSET);
+          return progress * SUBWAY_PLATFORM_HEIGHT;
+        }
+        if (
+          referenceY !== undefined &&
+          referenceY < -3.5 &&
+          x >= station.x - 10 &&
+          x <= station.accessX + SUBWAY_STAIR_HALF_WIDTH &&
+          Math.abs(z - station.z) <= 13
+        ) return SUBWAY_PLATFORM_HEIGHT;
+      }
       const travelAxis = axis ?? 'z';
-      const onFootbridgeApproach =
-        axis !== undefined &&
-        (axis === 'x' || Math.abs(x) >= FOOTBRIDGE_STAIR_X - FOOTBRIDGE_STAIR_HALF_W);
-      const bridge = onFootbridgeApproach ? footbridgeHeightAt(x, z) : 0;
+      const bridge = footbridgeHeightAt(x, z);
       if (
         bridge > 0 &&
-        (referenceY === undefined || Math.abs(bridge - referenceY) <= 0.75)
+        referenceY !== undefined &&
+        Math.abs(bridge - referenceY) <= 0.75
       ) return bridge;
       const deck = bridgeDeckYAt(x, z, travelAxis, referenceY);
       if (deck > 0) return deck;
