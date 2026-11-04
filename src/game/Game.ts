@@ -334,6 +334,10 @@ export class Game {
   private daylight = 1;
   private nightMode = false;
   private clockSecond = -1;
+  // In-game time runs faster than the wall clock so the sun, moon and HUD
+  // clock visibly move during play. 60x = one real second per game minute.
+  private gameClockMs = Date.now();
+  private static readonly GAME_TIME_SCALE = 60;
 
   private giverMarker: THREE.Group;
   private objectiveMarker: THREE.Group;
@@ -716,6 +720,7 @@ export class Game {
     const dt = Math.min(0.05, rawDt);
     this.lastTime = now;
     this.fps += (1 / Math.max(rawDt, 0.001) - this.fps) * 0.06;
+    this.gameClockMs += Math.min(rawDt, 0.25) * 1000 * Game.GAME_TIME_SCALE;
     this.expandShadow();
     this.update(dt);
     this.updateClock();
@@ -772,7 +777,7 @@ export class Game {
   }
 
   private expandShadow(): void {
-    const date = new Date();
+    const date = new Date(this.gameClockMs);
     const hour = date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
     const solarAngle = ((hour - 6) / 12) * Math.PI;
     this.sunDirection.set(
@@ -819,7 +824,7 @@ export class Game {
   }
 
   private updateTimeOfDay(): void {
-    const date = new Date();
+    const date = new Date(this.gameClockMs);
     const minute = date.getHours() * 60 + date.getMinutes();
     if (minute === this.lightingMinute) return;
     this.lightingMinute = minute;
@@ -4117,7 +4122,7 @@ export class Game {
   }
 
   private updateClock(): void {
-    const now = new Date();
+    const now = new Date(this.gameClockMs);
     const second = now.getSeconds();
     const stamp = Math.floor(now.getTime() / 1000);
     if (stamp === this.clockSecond) return;

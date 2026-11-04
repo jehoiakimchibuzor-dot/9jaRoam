@@ -49,7 +49,7 @@ export class Birds {
     const material = new THREE.PointsMaterial({
       map: createBirdTexture(),
       color: 0x2b3038,
-      size: 5.5,
+      size: 6.5,
       sizeAttenuation: true,
       transparent: true,
       alphaTest: 0.18,
@@ -66,8 +66,8 @@ export class Birds {
     for (let i = 0; i < count; i += 1) {
       this.birds.push({
         angle: Math.random() * Math.PI * 2,
-        radius: 55 + Math.random() * 70,
-        height: 5 + Math.random() * 9,
+        radius: 110 + Math.random() * 90,
+        height: 28 + Math.random() * 18,
         speed: (0.05 + Math.random() * 0.12) * (Math.random() < 0.5 ? -1 : 1),
         phase: Math.random() * Math.PI * 2
       });
