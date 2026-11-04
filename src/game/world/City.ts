@@ -124,6 +124,8 @@ export interface City {
   waterAt(x: number, z: number, axis?: 'x' | 'z', referenceY?: number): number | null;
   /** Animates water, boats and river traffic. */
   update(dt: number): void;
+  /** Turns the city's window lights and rooftop beacons on at night. */
+  setNightMode(enabled: boolean): void;
   isRoad(x: number, z: number): boolean;
   groundHeightAt(x: number, z: number, axis?: 'x' | 'z', referenceY?: number): number;
   /** Height of an elevated road at a point, optionally for its travel axis. */
@@ -481,6 +483,11 @@ const batches = new Map<string, InstanceBatch>();
 const materialCache = new Map<string, THREE.MeshStandardMaterial>();
 const glowCache = new Map<string, THREE.MeshStandardMaterial>();
 const batchMaterialCache = new Map<number, THREE.MeshStandardMaterial>();
+// Lit windows and rooftop beacons are collected while the city is built, then
+// flushed into one instanced mesh each and toggled as a unit at night.
+const windowLightMatrices: THREE.Matrix4[] = [];
+const windowLightColors: number[] = [];
+const beaconMatrices: THREE.Matrix4[] = [];
 
 /** White base material so per-instance colors can carry the real tint. */
 function batchMat(roughness: number): THREE.MeshStandardMaterial {
@@ -649,6 +656,55 @@ function flushBatches(parent: THREE.Group): void {
   batches.clear();
 }
 
+/** One instanced mesh of lit windows plus one of rooftop beacons. */
+function buildCityNightLights(parent: THREE.Group): THREE.Group {
+  const group = new THREE.Group();
+  group.name = 'city-night-lights';
+
+  if (windowLightMatrices.length > 0) {
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      toneMapped: false,
+      side: THREE.DoubleSide
+    });
+    const windows = new THREE.InstancedMesh(
+      unitPlane,
+      material,
+      windowLightMatrices.length
+    );
+    for (let i = 0; i < windowLightMatrices.length; i += 1) {
+      windows.setMatrixAt(i, windowLightMatrices[i]);
+      windows.setColorAt(i, scratchColor.setHex(windowLightColors[i]));
+    }
+    windows.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+    if (windows.instanceColor) windows.instanceColor.needsUpdate = true;
+    windows.castShadow = false;
+    windows.receiveShadow = false;
+    windows.computeBoundingSphere();
+    group.add(windows);
+  }
+
+  if (beaconMatrices.length > 0) {
+    const beacons = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(0.34, 6, 5),
+      new THREE.MeshBasicMaterial({ color: 0xff3a22, toneMapped: false }),
+      beaconMatrices.length
+    );
+    for (let i = 0; i < beaconMatrices.length; i += 1) {
+      beacons.setMatrixAt(i, beaconMatrices[i]);
+    }
+    beacons.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+    beacons.castShadow = false;
+    beacons.receiveShadow = false;
+    beacons.computeBoundingSphere();
+    group.add(beacons);
+  }
+
+  group.visible = false;
+  parent.add(group);
+  return group;
+}
+
 let blobMaterial: THREE.MeshBasicMaterial | null = null;
 
 function getBlobTexture(): THREE.CanvasTexture {
@@ -804,6 +860,82 @@ interface BuildingOptions {
   style?: number;
 }
 
+const WINDOW_LIGHT_COLORS = [
+  0xffd28f, 0xffe2ac, 0xfff0cf, 0xf7c27a, 0xd6e6ff, 0xffe9c9
+];
+
+/**
+ * Tall blocks get a grid of lit windows and, on the tallest, a red rooftop
+ * beacon. They are only one instanced mesh, toggled with the night cycle.
+ */
+function addWindowLights(
+  x: number,
+  z: number,
+  width: number,
+  depth: number,
+  height: number,
+  side: number,
+  rnd: () => number
+): void {
+  if (height < 12) return;
+  const bands = Math.max(1, Math.min(5, Math.floor((height - 2.5) / 3.0)));
+  const windowOn = (px: number, py: number, pz: number, ry: number): void => {
+    if (rnd() > 0.66) return;
+    const color = WINDOW_LIGHT_COLORS[Math.floor(rnd() * WINDOW_LIGHT_COLORS.length)];
+    windowLightMatrices.push(transform(px, py, pz, 0.78, 1.08, 1, 0, ry, 0));
+    windowLightColors.push(color);
+  };
+
+  if (side !== 0) {
+    const columns = Math.max(1, Math.floor((depth - 1.4) / 1.8));
+    const spacing = (depth - 1.4) / columns;
+    for (const fx of [x - side * (width / 2 + 0.055), x + side * (width / 2 + 0.055)]) {
+      for (let row = 0; row < bands; row += 1) {
+        const y = 2.5 + row * 3.0;
+        for (let col = 0; col < columns; col += 1) {
+          windowOn(fx, y, z - depth / 2 + 0.7 + spacing * (col + 0.5), Math.PI / 2);
+        }
+      }
+    }
+    // Side elevations, so the blocks are not blank when seen from a cross street.
+    const sideColumns = Math.max(1, Math.floor((width - 1.4) / 1.8));
+    const sideSpacing = (width - 1.4) / sideColumns;
+    for (const fz of [z - depth / 2 - 0.055, z + depth / 2 + 0.055]) {
+      for (let row = 0; row < bands; row += 1) {
+        const y = 2.5 + row * 3.0;
+        for (let col = 0; col < sideColumns; col += 1) {
+          windowOn(x - width / 2 + 0.7 + sideSpacing * (col + 0.5), y, fz, 0);
+        }
+      }
+    }
+  } else {
+    const columns = Math.max(1, Math.floor((width - 1.4) / 1.8));
+    const spacing = (width - 1.4) / columns;
+    for (const fz of [z - depth / 2 - 0.055, z + depth / 2 + 0.055]) {
+      for (let row = 0; row < bands; row += 1) {
+        const y = 2.5 + row * 3.0;
+        for (let col = 0; col < columns; col += 1) {
+          windowOn(x - width / 2 + 0.7 + spacing * (col + 0.5), y, fz, 0);
+        }
+      }
+    }
+    const sideColumns = Math.max(1, Math.floor((depth - 1.4) / 1.8));
+    const sideSpacing = (depth - 1.4) / sideColumns;
+    for (const fx of [x - width / 2 - 0.055, x + width / 2 + 0.055]) {
+      for (let row = 0; row < bands; row += 1) {
+        const y = 2.5 + row * 3.0;
+        for (let col = 0; col < sideColumns; col += 1) {
+          windowOn(fx, y, z - depth / 2 + 0.7 + sideSpacing * (col + 0.5), Math.PI / 2);
+        }
+      }
+    }
+  }
+
+  if (height >= 16) {
+    beaconMatrices.push(transform(x, height + 0.9, z, 0.3, 0.3, 0.3, 0, 0, 0));
+  }
+}
+
 function addBuilding(
   colliders: Collider[],
   buildings: Collider[],
@@ -929,6 +1061,8 @@ function addBuilding(
     }
   }
 
+  addWindowLights(x, z, width, depth, height, side, rnd);
+
   const tanks = 1 + Math.floor(rnd() * 2);
   for (let i = 0; i < tanks; i += 1) {
     cylinder(
@@ -1049,6 +1183,12 @@ function addEnterableLandmark(
       box(accent, 0.5, 0.04, 0.82, 0.4, frontX - side * 0.095, 1.75, z + pz);
     }
   }
+  // Landmark shells get the same lit-window treatment as tall street blocks.
+  let windowSeed = Math.abs(Math.floor(x * 31 + z * 17 + h * 7)) % 2147483647 || 1;
+  addWindowLights(x, z, width, depth, h, side, () => {
+    windowSeed = (windowSeed * 48271) % 2147483647;
+    return windowSeed / 2147483647;
+  });
 
   addSign(
     parent,
@@ -1458,6 +1598,9 @@ function onRiverBridgeDeck(x: number, z: number): boolean {
 
 export function createCity(): City {
   batches.clear();
+  windowLightMatrices.length = 0;
+  windowLightColors.length = 0;
+  beaconMatrices.length = 0;
   const group = new THREE.Group();
   const colliders: Collider[] = [];
   const buildings: Collider[] = [];
@@ -3786,6 +3929,7 @@ export function createCity(): City {
   addRoadEnd(CAUSEWAY_X, -half + 4, 'x', 0, CAUSEWAY_HALF_W, CAUSEWAY_DECK_Y, 0.9);
 
   flushBatches(group);
+  const nightLights = buildCityNightLights(group);
 
   const districts: District[] = [
     { name: 'Kano Municipal', x: 0, z: 26, radius: 52 },
@@ -3894,6 +4038,9 @@ export function createCity(): City {
         boat.group.position.y = boat.baseY + Math.sin((z + boat.baseZ) * 0.2) * 0.045;
         boat.group.rotation.z = Math.sin((z + boat.baseZ) * 0.16) * 0.015;
       }
+    },
+    setNightMode: (enabled: boolean) => {
+      nightLights.visible = enabled;
     },
     isRoad: isRoadAt,
     groundHeightAt: (x: number, z: number, axis?: 'x' | 'z', referenceY?: number) => {

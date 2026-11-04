@@ -228,6 +228,75 @@ function addWheels(
   return { steerPivots, spinners };
 }
 
+let headlightBeamMaterial: THREE.MeshBasicMaterial | null = null;
+let headlightBeamGeometry: THREE.BufferGeometry | null = null;
+
+/** Soft painted pool used by NPC headlights instead of real spotlights. */
+function getHeadlightBeamTexture(): THREE.CanvasTexture {
+  const width = 128;
+  const height = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    // v = 0 is the bumper edge, so the wash fades away from the car.
+    const wash = ctx.createLinearGradient(0, height, 0, 0);
+    wash.addColorStop(0, 'rgba(255, 244, 214, 0.8)');
+    wash.addColorStop(0.4, 'rgba(255, 236, 194, 0.4)');
+    wash.addColorStop(1, 'rgba(255, 228, 178, 0)');
+    ctx.fillStyle = wash;
+    ctx.fillRect(0, 0, width, height);
+    for (const cx of [width * 0.28, width * 0.72]) {
+      const core = ctx.createRadialGradient(cx, height * 0.94, 1, cx, height * 0.84, height * 0.52);
+      core.addColorStop(0, 'rgba(255, 250, 236, 0.9)');
+      core.addColorStop(0.45, 'rgba(255, 238, 200, 0.26)');
+      core.addColorStop(1, 'rgba(255, 230, 190, 0)');
+      ctx.fillStyle = core;
+      ctx.fillRect(0, 0, width, height);
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function getHeadlightBeamMaterial(): THREE.MeshBasicMaterial {
+  if (!headlightBeamMaterial) {
+    headlightBeamMaterial = new THREE.MeshBasicMaterial({
+      map: getHeadlightBeamTexture(),
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      opacity: 0.3,
+      toneMapped: false,
+      side: THREE.DoubleSide
+    });
+  }
+  return headlightBeamMaterial;
+}
+
+/** Unit trapezoid: 1 m wide at the bumper, widening to 2.1 m, 1 m long. */
+function getHeadlightBeamGeometry(): THREE.BufferGeometry {
+  if (headlightBeamGeometry) return headlightBeamGeometry;
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute(
+    'position',
+    new THREE.Float32BufferAttribute(
+      [-0.5, 0, 0, 0.5, 0, 0, 1.05, 0, 1, -1.05, 0, 1],
+      3
+    )
+  );
+  geometry.setAttribute(
+    'uv',
+    new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2)
+  );
+  geometry.setIndex([0, 2, 1, 0, 3, 2]);
+  geometry.computeVertexNormals();
+  headlightBeamGeometry = geometry;
+  return geometry;
+}
+
 function defaultToughness(rig: VehicleRig): number {
   const label = rig.access?.label ?? '';
   if (label === 'OKADA') return 180;
@@ -332,7 +401,7 @@ function finishVehicle(rig: VehicleRig): VehicleRig {
     // Soft low beam aimed down the tarmac. The wide penumbra keeps the pool
     // gentle instead of a hard white wedge, and because the cone is tipped at
     // the road it never glows up over the bonnet.
-    const spot = new THREE.SpotLight(0xfff1cf, 6200, 62, Math.PI / 10, 0.85, 1.6);
+    const spot = new THREE.SpotLight(0xfff1cf, 1800, 55, Math.PI / 10, 0.9, 1.7);
     spot.position.set(side * Math.min(rig.width * 0.28, 0.68), 0.7, rig.length / 2 - 0.05);
     spot.castShadow = false;
     spot.target.position.set(
@@ -345,6 +414,22 @@ function finishVehicle(rig: VehicleRig): VehicleRig {
   headlightSpots.visible = false;
   rig.group.add(headlightSpots);
   rig.group.userData.headlightSpots = headlightSpots;
+
+  // A single additive trapezoid on the road for NPC traffic. One draw call per
+  // car, unlike a pair of real spotlights per car.
+  const headlightBeams = new THREE.Mesh(
+    getHeadlightBeamGeometry(),
+    getHeadlightBeamMaterial()
+  );
+  headlightBeams.name = 'headlight-beams';
+  headlightBeams.position.set(0, 0.035, rig.length / 2 - 0.25);
+  headlightBeams.scale.set(rig.width * 1.15, 1, 17);
+  headlightBeams.castShadow = false;
+  headlightBeams.receiveShadow = false;
+  headlightBeams.renderOrder = 2;
+  headlightBeams.visible = false;
+  rig.group.add(headlightBeams);
+  rig.group.userData.headlightBeams = headlightBeams;
   return rig;
 }
 
@@ -355,6 +440,10 @@ export function setVehicleNightLighting(
 ): void {
   const spots = rig.group.userData.headlightSpots as THREE.Group | undefined;
   if (spots) spots.visible = enabled && illuminateRoad;
+  // Traffic cars get a cheap painted beam instead of two extra spotlights, so
+  // every car on the road reads as having its headlights on at night.
+  const beams = rig.group.userData.headlightBeams as THREE.Mesh | undefined;
+  if (beams) beams.visible = enabled && !illuminateRoad;
 }
 
 function buildDriver(helmetColor?: number): THREE.Group {

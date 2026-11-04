@@ -837,6 +837,7 @@ export class Game {
       smoothstep(5.5, 7, hour) * (1 - smoothstep(17.5, 19, hour));
     this.daylight = daylight;
     this.nightMode = daylight < 0.3;
+    this.city?.setNightMode(this.nightMode);
     const twilight = Math.max(
       1 - Math.abs(hour - 6.2) / 1.7,
       1 - Math.abs(hour - 17.8) / 1.7
