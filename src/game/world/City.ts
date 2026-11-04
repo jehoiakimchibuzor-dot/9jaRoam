@@ -232,6 +232,10 @@ export function constrainPlayerToFootbridge(position: THREE.Vector3, radius: num
 export const ROAD_HALF = 11;
 export const ROAD_LENGTH = 1040;
 export const WORLD_HALF_X = 520;
+export const DESERT_HIGHWAY_START_X = WORLD_HALF_X;
+export const DESERT_HIGHWAY_END_X = 1240;
+export const DESERT_HIGHWAY_Z = 412;
+export const DESERT_HIGHWAY_HALF_WIDTH = 9;
 export const SIDE_ROAD_X = 64;
 export const SIDE_HALF = 9;
 export const OUTER_ROAD_X = 136;
@@ -1392,6 +1396,11 @@ function buildSegments(from: number, to: number): Array<[number, number]> {
 }
 
 function isRoadAt(x: number, z: number, includeCauseway = true): boolean {
+  if (
+    x >= DESERT_HIGHWAY_START_X &&
+    x <= DESERT_HIGHWAY_END_X &&
+    Math.abs(z - DESERT_HIGHWAY_Z) <= DESERT_HIGHWAY_HALF_WIDTH
+  ) return true;
   if (Math.abs(x) <= ROAD_HALF) return true;
   for (const sx of SIDE_ROADS) {
     if (Math.abs(x - sx) <= roadHalfFor(sx)) return true;
@@ -1657,6 +1666,155 @@ export function createCity(): City {
   shoreRing.position.set(0, OCEAN_SURFACE_Y + 0.01, 0);
   shoreRing.receiveShadow = true;
   group.add(shoreRing);
+
+  const desertLandStartX = WORLD_HALF_X + GROUND_EXTRA;
+  const desertMaterial = new THREE.MeshStandardMaterial({ color: 0xb18a54, roughness: 1 });
+  const desertGround = new THREE.Mesh(
+    new THREE.PlaneGeometry(
+      DESERT_HIGHWAY_END_X - desertLandStartX,
+      ROAD_LENGTH + GROUND_EXTRA * 2
+    ),
+    desertMaterial
+  );
+  desertGround.rotation.x = -Math.PI / 2;
+  desertGround.position.set(
+    (desertLandStartX + DESERT_HIGHWAY_END_X) / 2,
+    -0.08,
+    0
+  );
+  desertGround.receiveShadow = true;
+  group.add(desertGround);
+
+  const desertShoulderMaterial = new THREE.MeshStandardMaterial({ color: 0x72604a, roughness: 1 });
+  const desertRoadMaterial = new THREE.MeshStandardMaterial({ color: 0x34383b, roughness: 0.96 });
+  const desertRoad = new THREE.Mesh(
+    new THREE.PlaneGeometry(DESERT_HIGHWAY_END_X - DESERT_HIGHWAY_START_X, CROSS_HALF * 2),
+    desertRoadMaterial
+  );
+  desertRoad.rotation.x = -Math.PI / 2;
+  desertRoad.position.set(
+    (DESERT_HIGHWAY_START_X + DESERT_HIGHWAY_END_X) / 2,
+    -0.045,
+    DESERT_HIGHWAY_Z
+  );
+  desertRoad.receiveShadow = true;
+  group.add(desertRoad);
+
+  for (const side of [-1, 1]) {
+    const shoulder = new THREE.Mesh(
+      new THREE.PlaneGeometry(DESERT_HIGHWAY_END_X - DESERT_HIGHWAY_START_X, 3.2),
+      desertShoulderMaterial
+    );
+    shoulder.rotation.x = -Math.PI / 2;
+    shoulder.position.set(
+      (DESERT_HIGHWAY_START_X + DESERT_HIGHWAY_END_X) / 2,
+      -0.035,
+      DESERT_HIGHWAY_Z + side * (CROSS_HALF + 1.5)
+    );
+    shoulder.receiveShadow = true;
+    group.add(shoulder);
+  }
+
+  const desertMarkingMaterial = new THREE.MeshBasicMaterial({
+    color: 0xe7d59b,
+    toneMapped: false
+  });
+  const addDesertMarking = (x: number, z: number, length: number, width: number): void => {
+    const marking = new THREE.Mesh(new THREE.PlaneGeometry(length, width), desertMarkingMaterial);
+    marking.rotation.x = -Math.PI / 2;
+    marking.position.set(x, -0.035, z);
+    group.add(marking);
+  };
+  for (const side of [-1, 1]) {
+    addDesertMarking(
+      (DESERT_HIGHWAY_START_X + DESERT_HIGHWAY_END_X) / 2,
+      DESERT_HIGHWAY_Z + side * (DESERT_HIGHWAY_HALF_WIDTH - 0.7),
+      DESERT_HIGHWAY_END_X - DESERT_HIGHWAY_START_X,
+      0.16
+    );
+    for (let x = DESERT_HIGHWAY_START_X + 18; x < DESERT_HIGHWAY_END_X - 4; x += 30) {
+      addDesertMarking(x, DESERT_HIGHWAY_Z + side * 4.5, 14, 0.11);
+    }
+  }
+  for (const offset of [-0.24, 0.24]) {
+    addDesertMarking(
+      (DESERT_HIGHWAY_START_X + DESERT_HIGHWAY_END_X) / 2,
+      DESERT_HIGHWAY_Z + offset,
+      DESERT_HIGHWAY_END_X - DESERT_HIGHWAY_START_X,
+      0.12
+    );
+  }
+
+  const mountainColors = [0x776044, 0x806848, 0x8c704a, 0x6e5a43];
+  const mountainSites: Array<{ x: number; z: number; radius: number; height: number }> = [
+    { x: 700, z: -360, radius: 48, height: 45 },
+    { x: 720, z: -170, radius: 66, height: 61 },
+    { x: 850, z: -410, radius: 74, height: 72 },
+    { x: 955, z: -220, radius: 43, height: 40 },
+    { x: 1110, z: -405, radius: 82, height: 78 },
+    { x: 1200, z: -180, radius: 58, height: 53 },
+    { x: 710, z: 35, radius: 55, height: 47 },
+    { x: 795, z: 180, radius: 77, height: 70 },
+    { x: 935, z: 75, radius: 60, height: 56 },
+    { x: 1080, z: 210, radius: 88, height: 84 },
+    { x: 1200, z: 35, radius: 65, height: 60 },
+    { x: 730, z: 510, radius: 52, height: 43 },
+    { x: 855, z: 505, radius: 78, height: 72 },
+    { x: 1035, z: 510, radius: 60, height: 58 },
+    { x: 1190, z: 500, radius: 82, height: 79 }
+  ];
+  for (const [index, site] of mountainSites.entries()) {
+    const geometry = new THREE.ConeGeometry(1, 1, 7, 2);
+    const vertices = geometry.getAttribute('position');
+    for (let vertex = 0; vertex < vertices.count; vertex += 1) {
+      const y = vertices.getY(vertex);
+      if (y < 0.49) {
+        const variation = 0.82 + rnd() * 0.36;
+        vertices.setX(vertex, vertices.getX(vertex) * variation);
+        vertices.setZ(vertex, vertices.getZ(vertex) * (0.82 + rnd() * 0.36));
+        vertices.setY(vertex, y * (0.9 + rnd() * 0.2));
+      }
+    }
+    vertices.needsUpdate = true;
+    geometry.computeVertexNormals();
+    const mountain = new THREE.Mesh(
+      geometry,
+      new THREE.MeshStandardMaterial({
+        color: mountainColors[index % mountainColors.length],
+        roughness: 1,
+        flatShading: true
+      })
+    );
+    mountain.position.set(site.x, site.height / 2 - 0.04, site.z);
+    mountain.scale.set(site.radius, site.height, site.radius * (0.82 + rnd() * 0.3));
+    mountain.receiveShadow = true;
+    group.add(mountain);
+    colliders.push({
+      minX: site.x - site.radius * 0.72,
+      maxX: site.x + site.radius * 0.72,
+      minZ: site.z - site.radius * 0.72,
+      maxZ: site.z + site.radius * 0.72
+    });
+  }
+
+  const duneColors = [0xc1a06b, 0xa98754, 0x97764d];
+  for (let i = 0; i < 18; i += 1) {
+    const x = WORLD_HALF_X + GROUND_EXTRA + 35 + rnd() *
+      (DESERT_HIGHWAY_END_X - WORLD_HALF_X - GROUND_EXTRA - 70);
+    const z = -half - GROUND_EXTRA + 40 + rnd() * (DESERT_HIGHWAY_Z + half + GROUND_EXTRA - 110);
+    const dune = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 8, 5),
+      new THREE.MeshStandardMaterial({
+        color: duneColors[i % duneColors.length],
+        roughness: 1,
+        flatShading: true
+      })
+    );
+    dune.position.set(x, 0.35, z);
+    dune.scale.set(30 + rnd() * 55, 1.1 + rnd() * 1.8, 14 + rnd() * 24);
+    dune.receiveShadow = true;
+    group.add(dune);
+  }
 
   // Solid edge lines break at every junction so paint never runs through the
   // crossing, the way real kerb lines stop at a corner.
@@ -3444,7 +3602,8 @@ export function createCity(): City {
     { name: 'Hotoro East', x: 430, z: 300, radius: 110 },
     { name: 'Rijiyar Lemo', x: 420, z: -300, radius: 120 },
     { name: 'Kurna Asabe', x: 470, z: 140, radius: 100 },
-    { name: 'Kofar Wambai West', x: -510, z: 0, radius: 125 }
+    { name: 'Kofar Wambai West', x: -510, z: 0, radius: 125 },
+    { name: 'Sahara Highway', x: 900, z: DESERT_HIGHWAY_Z, radius: 360 }
   ];
 
   const city: City = {
@@ -3456,7 +3615,7 @@ export function createCity(): City {
     minZ: -half,
     maxZ: half,
     worldMinX: WEST_DISTRICT_MIN_X - 140,
-    worldMaxX: WORLD_HALF_X + 140,
+    worldMaxX: DESERT_HIGHWAY_END_X + 40,
     worldMinZ: -half - 140,
     worldMaxZ: half + 140,
     landmarks,
@@ -3477,6 +3636,11 @@ export function createCity(): City {
       surfaceY: RIVER_SURFACE_Y
     },
     waterAt: (x: number, z: number, axis?: 'x' | 'z', referenceY?: number) => {
+      if (
+        x >= DESERT_HIGHWAY_START_X &&
+        x <= DESERT_HIGHWAY_END_X &&
+        Math.abs(z) <= half
+      ) return null;
       if (
         isRiverAt(x, z) &&
         !isRoadAt(x, z) &&
@@ -3555,6 +3719,11 @@ export function createCity(): City {
       if (deck > 0) return deck;
       if (onCrossBayBridge(x, z)) return 0.08;
       if (isRoadAt(x, z)) return 0;
+      if (
+        x >= DESERT_HIGHWAY_START_X &&
+        x <= DESERT_HIGHWAY_END_X &&
+        Math.abs(z) <= half
+      ) return SIDEWALK_TOP;
       if (onJettyDeck(x, z)) return 0.16;
       if (x < WEST_SHORE_X) {
         return x >= WEST_DISTRICT_MIN_X && x <= WEST_DISTRICT_MAX_X

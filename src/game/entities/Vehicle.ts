@@ -322,7 +322,57 @@ function finishVehicle(rig: VehicleRig): VehicleRig {
     rig.centerOfMassY *= heightFactor;
     if (rig.access) rig.access.cameraHeight *= heightFactor;
   }
+
+  const headlightBeams = new THREE.Group();
+  headlightBeams.name = 'headlight-beams';
+  const beamMaterial = new THREE.MeshBasicMaterial({
+    color: 0xfff1cc,
+    transparent: true,
+    opacity: 0.085,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    toneMapped: false
+  });
+  const beamGeometry = new THREE.CylinderGeometry(0.08, 2.7, 28, 12, 1, true);
+  for (const side of [-1, 1]) {
+    const beam = new THREE.Mesh(beamGeometry, beamMaterial);
+    beam.rotation.x = -Math.PI / 2;
+    beam.position.set(side * Math.min(rig.width * 0.28, 0.68), 0.8, rig.length / 2 + 14);
+    headlightBeams.add(beam);
+  }
+  headlightBeams.visible = false;
+  rig.group.add(headlightBeams);
+  rig.group.userData.headlightBeams = headlightBeams;
+
+  const headlightSpots = new THREE.Group();
+  headlightSpots.name = 'headlight-spots';
+  for (const side of [-1, 1]) {
+    const spot = new THREE.SpotLight(0xfff1cf, 90, 52, Math.PI / 8, 0.65, 1.5);
+    spot.position.set(side * Math.min(rig.width * 0.28, 0.68), 0.8, rig.length / 2 - 0.05);
+    spot.castShadow = false;
+    spot.target.position.set(
+      side * Math.min(rig.width * 0.3, 0.72),
+      0.1,
+      rig.length / 2 + 24
+    );
+    headlightSpots.add(spot, spot.target);
+  }
+  headlightSpots.visible = false;
+  rig.group.add(headlightSpots);
+  rig.group.userData.headlightSpots = headlightSpots;
   return rig;
+}
+
+export function setVehicleNightLighting(
+  rig: VehicleRig,
+  enabled: boolean,
+  illuminateRoad = false
+): void {
+  const beams = rig.group.userData.headlightBeams as THREE.Group | undefined;
+  const spots = rig.group.userData.headlightSpots as THREE.Group | undefined;
+  if (beams) beams.visible = enabled;
+  if (spots) spots.visible = enabled && illuminateRoad;
 }
 
 function buildDriver(helmetColor?: number): THREE.Group {

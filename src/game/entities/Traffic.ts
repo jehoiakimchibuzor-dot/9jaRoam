@@ -11,6 +11,10 @@ import {
   ROAD_HALF,
   ROAD_LENGTH,
   roadHalfFor,
+  DESERT_HIGHWAY_END_X,
+  DESERT_HIGHWAY_HALF_WIDTH,
+  DESERT_HIGHWAY_START_X,
+  DESERT_HIGHWAY_Z,
   SIDE_HALF,
   SIDE_ROAD_X,
   SIDE_ROADS,
@@ -26,6 +30,7 @@ import {
   createSedan,
   createSportCar,
   ensureVehicleHealth,
+  setVehicleNightLighting,
   vehicleOverlap
 } from './Vehicle';
 import { IS_ANDROID } from '../platform';
@@ -58,6 +63,7 @@ interface TrafficVehicle {
   stop: number;
   visible: boolean;
   wreckedAt: number;
+  frontier?: boolean;
 }
 
 interface SpawnSpec {
@@ -68,6 +74,9 @@ interface SpawnSpec {
   dir: 1 | -1;
   along: number;
   cruise: number;
+  min?: number;
+  max?: number;
+  frontier?: boolean;
 }
 
 // --- Road geometry -------------------------------------------------------
@@ -181,7 +190,13 @@ const SPAWNS: SpawnSpec[] = [
   { kind: 'danfo', axis: 'z', fixed: CAUSEWAY_X - 3.4, dir: 1, along: -260, cruise: 9.6 },
   { kind: 'sedan', color: SEDAN_COLORS[3], axis: 'z', fixed: CAUSEWAY_X + 3.4, dir: -1, along: 140, cruise: 12.8 },
   { kind: 'keke', axis: 'z', fixed: CAUSEWAY_X - 3.4, dir: 1, along: 300, cruise: 8.8 },
-  { kind: 'bike', color: 0xd4a12f, axis: 'z', fixed: CAUSEWAY_X + 3.4, dir: -1, along: -80, cruise: 14.6 }
+  { kind: 'bike', color: 0xd4a12f, axis: 'z', fixed: CAUSEWAY_X + 3.4, dir: -1, along: -80, cruise: 14.6 },
+
+  // The desert highway is deliberately quiet: a handful of vehicles drive
+  // its remote route instead of the busy city streets.
+  { kind: 'sedan', color: SEDAN_COLORS[5], axis: 'x', fixed: DESERT_HIGHWAY_Z - 4.5, dir: 1, along: 650, cruise: 19, min: DESERT_HIGHWAY_START_X + 18, max: DESERT_HIGHWAY_END_X - 18, frontier: true },
+  { kind: 'sport', color: SPORT_COLORS[1], axis: 'x', fixed: DESERT_HIGHWAY_Z + 4.5, dir: -1, along: 880, cruise: 22, min: DESERT_HIGHWAY_START_X + 18, max: DESERT_HIGHWAY_END_X - 18, frontier: true },
+  { kind: 'danfo', axis: 'x', fixed: DESERT_HIGHWAY_Z - 4.5, dir: 1, along: 1100, cruise: 15, min: DESERT_HIGHWAY_START_X + 18, max: DESERT_HIGHWAY_END_X - 18, frontier: true }
 ];
 
 interface LaneSpec {
@@ -238,6 +253,11 @@ export class Traffic {
   private lightX: Signal = 'red';
   private lensMesh: THREE.InstancedMesh | null = null;
   private headPositions: Array<{ x: number; y: number; z: number }> = [];
+  private streetLampPositions: THREE.Vector3[] = [];
+  private streetLampLights: THREE.PointLight[] = [];
+  private streetLampBulbs: THREE.InstancedMesh | null = null;
+  private streetLightTimer = 0;
+  private nightMode = false;
   private crashCooldown = 0;
   private readonly recycleDistance = IS_ANDROID ? 235 : 300;
 
@@ -256,6 +276,9 @@ export class Traffic {
     );
     if (chosen.length > 0 && mainBridgeLane && !chosen.includes(mainBridgeLane)) {
       chosen[chosen.length - 1] = mainBridgeLane;
+    }
+    for (const spec of SPAWNS) {
+      if (spec.frontier && !chosen.includes(spec)) chosen.push(spec);
     }
     for (const spec of chosen) {
       let rig: VehicleRig;
@@ -289,16 +312,18 @@ export class Traffic {
         cruise: spec.cruise,
         speed: spec.cruise,
         along: spec.along,
-        min: spec.axis === 'z' ? -axisLength : X_MIN,
-        max: axisLength,
+        min: spec.min ?? (spec.axis === 'z' ? -axisLength : X_MIN),
+        max: spec.max ?? axisLength,
         stop: 0,
         visible: true,
-        wreckedAt: -1
+        wreckedAt: -1,
+        frontier: spec.frontier
       });
       this.nextId += 1;
     }
 
     this.buildTrafficLights(scene);
+    this.buildStreetLights(scene);
   }
 
   update(
@@ -307,11 +332,18 @@ export class Traffic {
     playerCar: VehicleRig | null,
     playerCarSpeed: number,
     playerCarYaw: number,
-    parkedVehicles: readonly VehicleRig[] = []
+    parkedVehicles: readonly VehicleRig[] = [],
+    nightMode = false
   ): void {
     this.elapsed += dt;
     this.crashCooldown = Math.max(0, this.crashCooldown - dt);
     this.updateLightState();
+    if (nightMode !== this.nightMode) this.setNightMode(nightMode);
+    this.streetLightTimer -= dt;
+    if (this.streetLightTimer <= 0) {
+      this.streetLightTimer = 0.4;
+      this.updateStreetLights(playerPos);
+    }
 
     for (const v of this.list) {
       if (playerPos) {
@@ -319,7 +351,7 @@ export class Traffic {
           v.rig.group.position.x - playerPos.x,
           v.rig.group.position.z - playerPos.z
         );
-        if (distance > this.recycleDistance) {
+        if (distance > this.recycleDistance && !v.frontier) {
           this.recycle(v, playerPos);
         }
       }
@@ -852,6 +884,128 @@ export class Traffic {
     scene.add(this.lightGroup);
     this.lightsBuilt = true;
     this.applyLensColors(true);
+  }
+
+  private buildStreetLights(scene: THREE.Scene): void {
+    const roads = [
+      { x: 0, halfWidth: ROAD_HALF },
+      ...SIDE_ROADS.map((x) => ({ x, halfWidth: roadHalfFor(x) }))
+    ];
+    const lamps: Array<{ x: number; z: number; side: number }> = [];
+    for (const [roadIndex, road] of roads.entries()) {
+      let step = 0;
+      for (let z = -470; z <= 470; z += 78) {
+        if (CROSS_ZS.some((crossing) => Math.abs(z - crossing) < CROSS_HALF + 12)) continue;
+        const side = (roadIndex + step) % 2 === 0 ? -1 : 1;
+        lamps.push({
+          x: road.x + side * (road.halfWidth + 4.5),
+          z,
+          side
+        });
+        step += 1;
+      }
+    }
+
+    const poleMaterial = new THREE.MeshStandardMaterial({ color: 0x343b3c, roughness: 0.88 });
+    const poles = new THREE.InstancedMesh(
+      new THREE.CylinderGeometry(0.09, 0.16, 5.8, 7),
+      poleMaterial,
+      lamps.length
+    );
+    const arms = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(2.4, 0.12, 0.12),
+      poleMaterial,
+      lamps.length
+    );
+    const shades = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(0.62, 0.12, 0.38),
+      poleMaterial,
+      lamps.length
+    );
+    const bulbMaterial = new THREE.MeshStandardMaterial({
+      color: 0x5c513d,
+      emissive: 0xffd18a,
+      emissiveIntensity: 0.02,
+      roughness: 0.4,
+      toneMapped: false
+    });
+    const bulbs = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(0.16, 8, 6),
+      bulbMaterial,
+      lamps.length
+    );
+    for (const mesh of [poles, arms, shades, bulbs]) mesh.frustumCulled = false;
+    const matrix = new THREE.Matrix4();
+    const position = new THREE.Vector3();
+    const rotation = new THREE.Quaternion();
+    const scale = new THREE.Vector3(1, 1, 1);
+    lamps.forEach((lamp, index) => {
+      position.set(lamp.x, 2.9, lamp.z);
+      matrix.compose(position, rotation, scale);
+      poles.setMatrixAt(index, matrix);
+
+      const fixtureX = lamp.x - lamp.side * 2.1;
+      position.set(lamp.x - lamp.side * 1.0, 5.65, lamp.z);
+      matrix.compose(position, rotation, scale);
+      arms.setMatrixAt(index, matrix);
+
+      position.set(fixtureX, 5.54, lamp.z);
+      matrix.compose(position, rotation, scale);
+      shades.setMatrixAt(index, matrix);
+      position.y = 5.39;
+      matrix.compose(position, rotation, scale);
+      bulbs.setMatrixAt(index, matrix);
+      this.streetLampPositions.push(new THREE.Vector3(fixtureX, 5.35, lamp.z));
+    });
+    for (const mesh of [poles, arms, shades, bulbs]) mesh.instanceMatrix.needsUpdate = true;
+    this.streetLampBulbs = bulbs;
+    this.lightGroup.add(poles, arms, shades, bulbs);
+
+    for (let i = 0; i < 10; i += 1) {
+      const light = new THREE.PointLight(0xffd49a, 42, 34, 2);
+      light.visible = false;
+      this.streetLampLights.push(light);
+      scene.add(light);
+    }
+  }
+
+  private setNightMode(enabled: boolean): void {
+    this.nightMode = enabled;
+    const bulbMaterial = this.streetLampBulbs?.material;
+    if (bulbMaterial instanceof THREE.MeshStandardMaterial) {
+      bulbMaterial.color.set(enabled ? 0xffe6b2 : 0x5c513d);
+      bulbMaterial.emissiveIntensity = enabled ? 3.2 : 0.02;
+    }
+    for (const vehicle of this.list) {
+      setVehicleNightLighting(vehicle.rig, enabled);
+    }
+    if (!enabled) {
+      for (const light of this.streetLampLights) light.visible = false;
+    }
+  }
+
+  private updateStreetLights(playerPos: THREE.Vector3 | null): void {
+    if (!this.nightMode || !playerPos) {
+      for (const light of this.streetLampLights) light.visible = false;
+      return;
+    }
+    const nearest = this.streetLampPositions
+      .map((position) => ({
+        position,
+        distance: position.distanceToSquared(playerPos)
+      }))
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, this.streetLampLights.length);
+    for (let i = 0; i < this.streetLampLights.length; i += 1) {
+      const light = this.streetLampLights[i];
+      const lamp = nearest[i];
+      if (!lamp || lamp.distance > 110 * 110) {
+        light.visible = false;
+        continue;
+      }
+      light.position.copy(lamp.position);
+      light.visible = true;
+    }
   }
 
   private updateLightState(): void {
