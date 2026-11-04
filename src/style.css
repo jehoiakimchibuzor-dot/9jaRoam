@@ -64,6 +64,28 @@ body,
   font-variant-numeric: tabular-nums;
 }
 
+#clock-time {
+  color: var(--amber);
+  font-size: clamp(12px, 2.6vw, 16px);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+}
+
+#clock-period {
+  color: #f2efe9;
+  font-size: clamp(9px, 1.8vw, 11px);
+}
+
+#clock-phase {
+  color: #8fd694;
+  font-size: clamp(8px, 1.6vw, 10px);
+  letter-spacing: 0.1em;
+}
+
+#clock-phase.night {
+  color: #8fb4ff;
+}
+
 #minimap {
   position: absolute;
   top: calc(48px + env(safe-area-inset-top));
@@ -546,6 +568,23 @@ body,
   display: flex;
   flex-direction: column;
   gap: 1px;
+}
+
+#location-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#clock {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 210, 74, 0.32);
+  background: rgba(10, 16, 22, 0.62);
+  white-space: nowrap;
 }
 
 #location-sub {

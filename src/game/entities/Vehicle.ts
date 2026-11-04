@@ -328,17 +328,17 @@ function finishVehicle(rig: VehicleRig): VehicleRig {
   const beamMaterial = new THREE.MeshBasicMaterial({
     color: 0xfff1cc,
     transparent: true,
-    opacity: 0.085,
+    opacity: 0.17,
     blending: THREE.AdditiveBlending,
     side: THREE.DoubleSide,
     depthWrite: false,
     toneMapped: false
   });
-  const beamGeometry = new THREE.CylinderGeometry(0.08, 2.7, 28, 12, 1, true);
+  const beamGeometry = new THREE.CylinderGeometry(0.08, 3.1, 38, 12, 1, true);
   for (const side of [-1, 1]) {
     const beam = new THREE.Mesh(beamGeometry, beamMaterial);
     beam.rotation.x = -Math.PI / 2;
-    beam.position.set(side * Math.min(rig.width * 0.28, 0.68), 0.8, rig.length / 2 + 14);
+    beam.position.set(side * Math.min(rig.width * 0.28, 0.68), 0.8, rig.length / 2 + 19);
     headlightBeams.add(beam);
   }
   headlightBeams.visible = false;
@@ -348,13 +348,13 @@ function finishVehicle(rig: VehicleRig): VehicleRig {
   const headlightSpots = new THREE.Group();
   headlightSpots.name = 'headlight-spots';
   for (const side of [-1, 1]) {
-    const spot = new THREE.SpotLight(0xfff1cf, 90, 52, Math.PI / 8, 0.65, 1.5);
+    const spot = new THREE.SpotLight(0xfff1cf, 165, 72, Math.PI / 7, 0.62, 1.35);
     spot.position.set(side * Math.min(rig.width * 0.28, 0.68), 0.8, rig.length / 2 - 0.05);
     spot.castShadow = false;
     spot.target.position.set(
       side * Math.min(rig.width * 0.3, 0.72),
       0.1,
-      rig.length / 2 + 24
+      rig.length / 2 + 36
     );
     headlightSpots.add(spot, spot.target);
   }

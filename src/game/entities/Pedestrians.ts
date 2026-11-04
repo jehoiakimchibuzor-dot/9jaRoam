@@ -295,6 +295,7 @@ const ARCHETYPES: Archetype[] = [
 export class Pedestrians {
   readonly list: Pedestrian[] = [];
   private onKilled: ((position: THREE.Vector3) => void) | null = null;
+  private desertCleared = false;
 
   constructor(private scene: THREE.Scene, private city: City, count = 18) {
     const zLimit = city.maxZ - 14;
@@ -617,6 +618,21 @@ export class Pedestrians {
   }
 
   update(dt: number, city: City, playerPosition: THREE.Vector3 | null, vehiclePosition: THREE.Vector3 | null): void {
+    // The eastern drylands are a lonely stretch of road: no city pedestrians
+    // wander out here, only traffic.
+    const inDesert = playerPosition ? playerPosition.x > WORLD_HALF_X - 10 : false;
+    if (inDesert) {
+      if (!this.desertCleared) {
+        this.desertCleared = true;
+        for (const p of this.list) {
+          p.visible = false;
+          p.group.visible = false;
+        }
+      }
+      return;
+    }
+    this.desertCleared = false;
+
     for (const p of this.list) {
       if (p.dead) {
         p.deadTimer += dt;

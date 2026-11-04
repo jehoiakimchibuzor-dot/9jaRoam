@@ -16,6 +16,7 @@ import {
   createSedan,
   createSportCar,
   ensureVehicleHealth as ensureRigHealth,
+  setVehicleNightLighting,
   VehicleRig,
   vehicleOverlap
 } from './entities/Vehicle';
@@ -138,6 +139,9 @@ interface TransitSequence {
 }
 
 interface HudElements {
+  clockTime: HTMLElement | null;
+  clockPeriod: HTMLElement | null;
+  clockPhase: HTMLElement | null;
   healthFill: HTMLElement | null;
   healthText: HTMLElement | null;
   armourFill: HTMLElement | null;
@@ -318,7 +322,12 @@ export class Game {
   private moonLight!: THREE.DirectionalLight;
   private sunOrb!: THREE.Mesh;
   private moonOrb!: THREE.Mesh;
+  private sunGlow!: THREE.Sprite;
+  private moonGlow!: THREE.Sprite;
   private lightingMinute = -1;
+  private daylight = 1;
+  private nightMode = false;
+  private clockSecond = -1;
 
   private giverMarker: THREE.Group;
   private objectiveMarker: THREE.Group;
@@ -384,16 +393,23 @@ export class Game {
     );
     this.sunOrb.frustumCulled = false;
     this.moonOrb.frustumCulled = false;
-    this.sunOrb.renderOrder = 1;
-    this.moonOrb.renderOrder = 1;
+    this.sunOrb.renderOrder = 2;
+    this.moonOrb.renderOrder = 2;
+    this.sunGlow = this.createSkyGlow('rgba(255, 214, 140, 0.85)');
+    this.moonGlow = this.createSkyGlow('rgba(190, 210, 255, 0.6)');
+    this.sunGlow.scale.set(74, 74, 1);
+    this.moonGlow.scale.set(46, 46, 1);
     this.scene.add(
       this.hemisphereLight,
       this.sunLight,
       this.sunLight.target,
       this.moonLight,
       this.moonLight.target,
+      this.sunGlow,
+      this.moonGlow,
+      this.sunOrb,
+      this.moonOrb
     );
-    this.camera.add(this.sunOrb, this.moonOrb);
     this.updateTimeOfDay();
 
     this.city = createCity();
@@ -463,7 +479,7 @@ export class Game {
       );
       if (distance < 45) this.showToast('VEHICLE WRECKED \u00b7 DRIVER BAILED OUT');
     };
-    this.pedestrians = new Pedestrians(this.scene, this.city, IS_ANDROID ? 48 : 90);
+    this.pedestrians = new Pedestrians(this.scene, this.city, IS_ANDROID ? 32 : 60);
     this.streetPeople = new StreetPeople(this.scene, this.city);
     this.planes = new Planes(this.scene);
     const callbacks = this.makeCombatCallbacks();
@@ -595,6 +611,9 @@ export class Game {
       fuelRow: byId('car-fuel-row'),
       fuelFill: byId('car-fuel-fill'),
       fuelText: byId('car-fuel-text'),
+      clockTime: byId('clock-time'),
+      clockPeriod: byId('clock-period'),
+      clockPhase: byId('clock-phase'),
       money: byId('money'),
       bankBalance: byId('bank-balance'),
       wanted: byId('wanted'),
@@ -692,6 +711,7 @@ export class Game {
     this.fps += (1 / Math.max(rawDt, 0.001) - this.fps) * 0.06;
     this.expandShadow();
     this.update(dt);
+    this.updateClock();
     this.renderer.render(this.scene, this.camera);
     this.adaptResolution(rawDt);
     requestAnimationFrame((t) => this.loop(t));
@@ -717,6 +737,33 @@ export class Game {
     }
   }
 
+  private createSkyGlow(color: string): THREE.Sprite {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+    const gradient = ctx.createRadialGradient(64, 64, 6, 64, 64, 62);
+    gradient.addColorStop(0, color);
+    gradient.addColorStop(0.35, color.replace(/[\d.]+\)$/, '0.35)'));
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 128, 128);
+    const texture = new THREE.CanvasTexture(canvas);
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: texture,
+        blending: THREE.AdditiveBlending,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+        toneMapped: false
+      })
+    );
+    sprite.renderOrder = 1;
+    sprite.frustumCulled = false;
+    return sprite;
+  }
+
   private expandShadow(): void {
     const date = new Date();
     const hour = date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
@@ -737,12 +784,21 @@ export class Game {
     this.sunLight.target.position.copy(this.camTarget);
     this.moonLight.position.copy(this.camTarget).addScaledVector(this.moonDirection, 60);
     this.moonLight.target.position.copy(this.camTarget);
-    const sunElevation = Math.max(0, Math.sin(solarAngle));
-    const moonElevation = Math.max(0, Math.sin(lunarAngle));
-    this.sunOrb.position.set(-Math.cos(solarAngle) * 46, 20 + sunElevation * 35, -180);
-    this.moonOrb.position.set(-Math.cos(lunarAngle) * 46, 20 + moonElevation * 35, -180);
-    this.sunOrb.visible = this.sunDirection.y > 0.015;
-    this.moonOrb.visible = this.moonDirection.y > 0.015;
+
+    // Keep the sky bodies anchored far away from the camera, the way a real
+    // sun and moon sit on the celestial sphere.
+    const skyDistance = 300;
+    const skyCenter = this.camera.position;
+    this.sunOrb.position.copy(skyCenter).addScaledVector(this.sunDirection, skyDistance);
+    this.moonOrb.position.copy(skyCenter).addScaledVector(this.moonDirection, skyDistance);
+    this.sunGlow.position.copy(this.sunOrb.position);
+    this.moonGlow.position.copy(this.moonOrb.position);
+    const sunVisible = this.sunDirection.y > 0.02;
+    const moonVisible = this.moonDirection.y > 0.02;
+    this.sunOrb.visible = sunVisible;
+    this.sunGlow.visible = sunVisible;
+    this.moonOrb.visible = moonVisible;
+    this.moonGlow.visible = moonVisible;
   }
 
   private updateTimeOfDay(): void {
@@ -757,6 +813,8 @@ export class Game {
     };
     const daylight =
       smoothstep(5.5, 7, hour) * (1 - smoothstep(17.5, 19, hour));
+    this.daylight = daylight;
+    this.nightMode = daylight < 0.3;
     const twilight = Math.max(
       1 - Math.abs(hour - 6.2) / 1.7,
       1 - Math.abs(hour - 17.8) / 1.7
@@ -893,8 +951,12 @@ export class Game {
         activeVehicle,
         activeVehicle ? this.carSpeed : 0,
         this.carYaw,
-        this.drivableVehicles.filter((vehicle) => vehicle !== this.activeVehicle)
+        this.drivableVehicles.filter((vehicle) => vehicle !== this.activeVehicle),
+        this.nightMode
       );
+      if (activeVehicle) {
+        setVehicleNightLighting(activeVehicle, this.nightMode, true);
+      }
       this.pedestrians.update(dt, this.city, playerPosition, vehiclePosition);
       this.streetPeople.update(dt);
       this.thugs.update(
@@ -1623,6 +1685,7 @@ export class Game {
       if (t > 1.0) {
         if (door) door.rotation.y = 0;
         vehicle.doorOpen = false;
+        setVehicleNightLighting(vehicle, false);
         this.mode = 'foot';
         this.activeVehicle = null;
         this.entryCooldown = 0.6;
@@ -1634,6 +1697,7 @@ export class Game {
   }
 
   private recoverOnFoot(): void {
+    if (this.activeVehicle) setVehicleNightLighting(this.activeVehicle, false);
     this.mode = 'foot';
     this.activeVehicle = null;
     this.player.group.visible = true;
@@ -2779,6 +2843,7 @@ export class Game {
       );
       this.player.velocity.set(0, 0, 0);
       this.player.group.visible = true;
+      setVehicleNightLighting(car, false);
       this.activeVehicle = null;
       this.mode = 'foot';
       this.carSpeed = 0;
@@ -2852,6 +2917,7 @@ export class Game {
       if (this.activeVehicle) {
         if (this.activeVehicle.driver) this.activeVehicle.driver.visible = false;
         this.activeVehicle.doorOpen = false;
+        setVehicleNightLighting(this.activeVehicle, false);
       }
       this.activeVehicle = null;
       this.mode = 'foot';
@@ -4028,6 +4094,30 @@ export class Game {
     input.setButtonActive('btn-gas', false);
     input.setButtonEnabled('btn-rev', false);
     input.setButtonActive('btn-rev', false);
+  }
+
+  private updateClock(): void {
+    const now = new Date();
+    const second = now.getSeconds();
+    const stamp = Math.floor(now.getTime() / 1000);
+    if (stamp === this.clockSecond) return;
+    this.clockSecond = stamp;
+    if (this.ui.clockTime) {
+      const hour12 = now.getHours() % 12 || 12;
+      this.ui.clockTime.textContent =
+        `${hour12}:${String(now.getMinutes()).padStart(2, '0')}:${String(second).padStart(2, '0')}`;
+    }
+    if (this.ui.clockPeriod) {
+      this.ui.clockPeriod.textContent = now.getHours() >= 12 ? 'PM' : 'AM';
+    }
+    if (this.ui.clockPhase) {
+      this.ui.clockPhase.textContent = this.nightMode
+        ? 'NIGHT'
+        : this.daylight < 0.62
+          ? 'TWILIGHT'
+          : 'DAY';
+      this.ui.clockPhase.classList.toggle('night', this.nightMode);
+    }
   }
 
   private updateHud(dt: number): void {

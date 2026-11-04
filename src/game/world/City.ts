@@ -236,6 +236,15 @@ export const DESERT_HIGHWAY_START_X = WORLD_HALF_X;
 export const DESERT_HIGHWAY_END_X = 1240;
 export const DESERT_HIGHWAY_Z = 412;
 export const DESERT_HIGHWAY_HALF_WIDTH = 9;
+// A quieter frontage road runs parallel to the highway with a pair of
+// connectors, so the drylands feel like a real road network instead of a
+// single ribbon of tarmac.
+export const DESERT_FRONTAGE_START_X = 592;
+export const DESERT_FRONTAGE_END_X = 1226;
+export const DESERT_FRONTAGE_Z = 360;
+export const DESERT_FRONTAGE_HALF_WIDTH = 7;
+export const DESERT_CONNECTOR_XS = [700, 1000];
+export const DESERT_CONNECTOR_HALF_WIDTH = 6;
 export const SIDE_ROAD_X = 64;
 export const SIDE_HALF = 9;
 export const OUTER_ROAD_X = 136;
@@ -1395,12 +1404,29 @@ function buildSegments(from: number, to: number): Array<[number, number]> {
   return segments;
 }
 
-function isRoadAt(x: number, z: number, includeCauseway = true): boolean {
+function isDesertRoadAt(x: number, z: number): boolean {
   if (
     x >= DESERT_HIGHWAY_START_X &&
     x <= DESERT_HIGHWAY_END_X &&
     Math.abs(z - DESERT_HIGHWAY_Z) <= DESERT_HIGHWAY_HALF_WIDTH
   ) return true;
+  if (
+    x >= DESERT_FRONTAGE_START_X &&
+    x <= DESERT_FRONTAGE_END_X &&
+    Math.abs(z - DESERT_FRONTAGE_Z) <= DESERT_FRONTAGE_HALF_WIDTH
+  ) return true;
+  for (const connectorX of DESERT_CONNECTOR_XS) {
+    if (
+      Math.abs(x - connectorX) <= DESERT_CONNECTOR_HALF_WIDTH &&
+      z >= DESERT_FRONTAGE_Z - DESERT_FRONTAGE_HALF_WIDTH &&
+      z <= DESERT_HIGHWAY_Z + DESERT_HIGHWAY_HALF_WIDTH
+    ) return true;
+  }
+  return false;
+}
+
+function isRoadAt(x: number, z: number, includeCauseway = true): boolean {
+  if (isDesertRoadAt(x, z)) return true;
   if (Math.abs(x) <= ROAD_HALF) return true;
   for (const sx of SIDE_ROADS) {
     if (Math.abs(x - sx) <= roadHalfFor(sx)) return true;
@@ -1668,18 +1694,19 @@ export function createCity(): City {
   group.add(shoreRing);
 
   const desertLandStartX = WORLD_HALF_X + GROUND_EXTRA;
+  const desertLandEndX = DESERT_HIGHWAY_END_X + 60;
   const desertMaterial = new THREE.MeshStandardMaterial({ color: 0xb18a54, roughness: 1 });
   const desertGround = new THREE.Mesh(
     new THREE.PlaneGeometry(
-      DESERT_HIGHWAY_END_X - desertLandStartX,
+      desertLandEndX - desertLandStartX,
       ROAD_LENGTH + GROUND_EXTRA * 2
     ),
     desertMaterial
   );
   desertGround.rotation.x = -Math.PI / 2;
   desertGround.position.set(
-    (desertLandStartX + DESERT_HIGHWAY_END_X) / 2,
-    -0.08,
+    (desertLandStartX + desertLandEndX) / 2,
+    -0.04,
     0
   );
   desertGround.receiveShadow = true;
@@ -1694,11 +1721,62 @@ export function createCity(): City {
   desertRoad.rotation.x = -Math.PI / 2;
   desertRoad.position.set(
     (DESERT_HIGHWAY_START_X + DESERT_HIGHWAY_END_X) / 2,
-    -0.045,
+    0,
     DESERT_HIGHWAY_Z
   );
   desertRoad.receiveShadow = true;
   group.add(desertRoad);
+
+  // Frontage road running below the highway, plus two connectors tying it back
+  // into the main route.
+  const frontageRoad = new THREE.Mesh(
+    new THREE.PlaneGeometry(
+      DESERT_FRONTAGE_END_X - DESERT_FRONTAGE_START_X,
+      DESERT_FRONTAGE_HALF_WIDTH * 2
+    ),
+    desertRoadMaterial
+  );
+  frontageRoad.rotation.x = -Math.PI / 2;
+  frontageRoad.position.set(
+    (DESERT_FRONTAGE_START_X + DESERT_FRONTAGE_END_X) / 2,
+    0,
+    DESERT_FRONTAGE_Z
+  );
+  frontageRoad.receiveShadow = true;
+  group.add(frontageRoad);
+
+  const connectorMinZ = DESERT_FRONTAGE_Z - DESERT_FRONTAGE_HALF_WIDTH;
+  const connectorMaxZ = DESERT_HIGHWAY_Z + DESERT_HIGHWAY_HALF_WIDTH;
+  for (const connectorX of DESERT_CONNECTOR_XS) {
+    const connector = new THREE.Mesh(
+      new THREE.PlaneGeometry(
+        DESERT_CONNECTOR_HALF_WIDTH * 2,
+        connectorMaxZ - connectorMinZ
+      ),
+      desertRoadMaterial
+    );
+    connector.rotation.x = -Math.PI / 2;
+    connector.position.set(
+      connectorX,
+      0.002,
+      (connectorMinZ + connectorMaxZ) / 2
+    );
+    connector.receiveShadow = true;
+    group.add(connector);
+
+    const connectorShoulder = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.6, connectorMaxZ - connectorMinZ),
+      desertShoulderMaterial
+    );
+    connectorShoulder.rotation.x = -Math.PI / 2;
+    connectorShoulder.position.set(
+      connectorX + DESERT_CONNECTOR_HALF_WIDTH + 0.8,
+      0.001,
+      (connectorMinZ + connectorMaxZ) / 2
+    );
+    connectorShoulder.receiveShadow = true;
+    group.add(connectorShoulder);
+  }
 
   for (const side of [-1, 1]) {
     const shoulder = new THREE.Mesh(
@@ -1708,7 +1786,7 @@ export function createCity(): City {
     shoulder.rotation.x = -Math.PI / 2;
     shoulder.position.set(
       (DESERT_HIGHWAY_START_X + DESERT_HIGHWAY_END_X) / 2,
-      -0.035,
+      0.001,
       DESERT_HIGHWAY_Z + side * (CROSS_HALF + 1.5)
     );
     shoulder.receiveShadow = true;
@@ -1722,7 +1800,7 @@ export function createCity(): City {
   const addDesertMarking = (x: number, z: number, length: number, width: number): void => {
     const marking = new THREE.Mesh(new THREE.PlaneGeometry(length, width), desertMarkingMaterial);
     marking.rotation.x = -Math.PI / 2;
-    marking.position.set(x, -0.035, z);
+    marking.position.set(x, 0.006, z);
     group.add(marking);
   };
   for (const side of [-1, 1]) {
@@ -1744,6 +1822,14 @@ export function createCity(): City {
       0.12
     );
   }
+  for (let x = DESERT_FRONTAGE_START_X + 16; x < DESERT_FRONTAGE_END_X - 8; x += 22) {
+    addDesertMarking(x, DESERT_FRONTAGE_Z, 11, 0.1);
+  }
+  for (const connectorX of DESERT_CONNECTOR_XS) {
+    for (let z = connectorMinZ + 8; z < connectorMaxZ - 6; z += 16) {
+      addDesertMarking(connectorX, z, 0.1, 9);
+    }
+  }
 
   const mountainColors = [0x776044, 0x806848, 0x8c704a, 0x6e5a43];
   const mountainSites: Array<{ x: number; z: number; radius: number; height: number }> = [
@@ -1761,7 +1847,7 @@ export function createCity(): City {
     { x: 730, z: 510, radius: 52, height: 43 },
     { x: 855, z: 505, radius: 78, height: 72 },
     { x: 1035, z: 510, radius: 60, height: 58 },
-    { x: 1190, z: 500, radius: 82, height: 79 }
+    { x: 1190, z: 545, radius: 82, height: 79 }
   ];
   for (const [index, site] of mountainSites.entries()) {
     const geometry = new THREE.ConeGeometry(1, 1, 7, 2);
@@ -3615,7 +3701,7 @@ export function createCity(): City {
     minZ: -half,
     maxZ: half,
     worldMinX: WEST_DISTRICT_MIN_X - 140,
-    worldMaxX: DESERT_HIGHWAY_END_X + 40,
+    worldMaxX: DESERT_HIGHWAY_END_X + 60,
     worldMinZ: -half - 140,
     worldMaxZ: half + 140,
     landmarks,
@@ -3638,8 +3724,8 @@ export function createCity(): City {
     waterAt: (x: number, z: number, axis?: 'x' | 'z', referenceY?: number) => {
       if (
         x >= DESERT_HIGHWAY_START_X &&
-        x <= DESERT_HIGHWAY_END_X &&
-        Math.abs(z) <= half
+        x <= DESERT_HIGHWAY_END_X + 60 &&
+        Math.abs(z) <= half + GROUND_EXTRA
       ) return null;
       if (
         isRiverAt(x, z) &&
@@ -3721,9 +3807,9 @@ export function createCity(): City {
       if (isRoadAt(x, z)) return 0;
       if (
         x >= DESERT_HIGHWAY_START_X &&
-        x <= DESERT_HIGHWAY_END_X &&
-        Math.abs(z) <= half
-      ) return SIDEWALK_TOP;
+        x <= DESERT_HIGHWAY_END_X + 60 &&
+        Math.abs(z) <= half + GROUND_EXTRA
+      ) return 0;
       if (onJettyDeck(x, z)) return 0.16;
       if (x < WEST_SHORE_X) {
         return x >= WEST_DISTRICT_MIN_X && x <= WEST_DISTRICT_MAX_X

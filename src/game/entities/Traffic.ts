@@ -11,8 +11,10 @@ import {
   ROAD_HALF,
   ROAD_LENGTH,
   roadHalfFor,
+  DESERT_FRONTAGE_END_X,
+  DESERT_FRONTAGE_START_X,
+  DESERT_FRONTAGE_Z,
   DESERT_HIGHWAY_END_X,
-  DESERT_HIGHWAY_HALF_WIDTH,
   DESERT_HIGHWAY_START_X,
   DESERT_HIGHWAY_Z,
   SIDE_HALF,
@@ -196,7 +198,9 @@ const SPAWNS: SpawnSpec[] = [
   // its remote route instead of the busy city streets.
   { kind: 'sedan', color: SEDAN_COLORS[5], axis: 'x', fixed: DESERT_HIGHWAY_Z - 4.5, dir: 1, along: 650, cruise: 19, min: DESERT_HIGHWAY_START_X + 18, max: DESERT_HIGHWAY_END_X - 18, frontier: true },
   { kind: 'sport', color: SPORT_COLORS[1], axis: 'x', fixed: DESERT_HIGHWAY_Z + 4.5, dir: -1, along: 880, cruise: 22, min: DESERT_HIGHWAY_START_X + 18, max: DESERT_HIGHWAY_END_X - 18, frontier: true },
-  { kind: 'danfo', axis: 'x', fixed: DESERT_HIGHWAY_Z - 4.5, dir: 1, along: 1100, cruise: 15, min: DESERT_HIGHWAY_START_X + 18, max: DESERT_HIGHWAY_END_X - 18, frontier: true }
+  { kind: 'danfo', axis: 'x', fixed: DESERT_HIGHWAY_Z - 4.5, dir: 1, along: 1100, cruise: 15, min: DESERT_HIGHWAY_START_X + 18, max: DESERT_HIGHWAY_END_X - 18, frontier: true },
+  { kind: 'keke', axis: 'x', fixed: DESERT_FRONTAGE_Z - 3.4, dir: 1, along: 760, cruise: 9.4, min: DESERT_FRONTAGE_START_X + 16, max: DESERT_FRONTAGE_END_X - 16, frontier: true },
+  { kind: 'sedan', color: SEDAN_COLORS[2], axis: 'x', fixed: DESERT_FRONTAGE_Z + 3.4, dir: -1, along: 1050, cruise: 13.2, min: DESERT_FRONTAGE_START_X + 16, max: DESERT_FRONTAGE_END_X - 16, frontier: true }
 ];
 
 interface LaneSpec {
@@ -256,6 +260,7 @@ export class Traffic {
   private streetLampPositions: THREE.Vector3[] = [];
   private streetLampLights: THREE.PointLight[] = [];
   private streetLampBulbs: THREE.InstancedMesh | null = null;
+  private streetLampPools: THREE.InstancedMesh | null = null;
   private streetLightTimer = 0;
   private nightMode = false;
   private crashCooldown = 0;
@@ -725,6 +730,7 @@ export class Traffic {
       v.speed = v.cruise;
       v.stop = 0;
       this.place(v);
+      if (this.nightMode) setVehicleNightLighting(v.rig, true);
       return;
     }
   }
@@ -891,7 +897,7 @@ export class Traffic {
       { x: 0, halfWidth: ROAD_HALF },
       ...SIDE_ROADS.map((x) => ({ x, halfWidth: roadHalfFor(x) }))
     ];
-    const lamps: Array<{ x: number; z: number; side: number }> = [];
+    const lamps: Array<{ x: number; z: number; side: number; alongX?: boolean }> = [];
     for (const [roadIndex, road] of roads.entries()) {
       let step = 0;
       for (let z = -470; z <= 470; z += 78) {
@@ -904,6 +910,10 @@ export class Traffic {
         });
         step += 1;
       }
+    }
+    // A sparse run of lamps keeps the desert highway readable after dark.
+    for (let x = DESERT_HIGHWAY_START_X + 46; x <= DESERT_HIGHWAY_END_X - 26; x += 96) {
+      lamps.push({ x, z: DESERT_HIGHWAY_Z + 13.5, side: 1, alongX: true });
     }
 
     const poleMaterial = new THREE.MeshStandardMaterial({ color: 0x343b3c, roughness: 0.88 });
@@ -934,35 +944,66 @@ export class Traffic {
       bulbMaterial,
       lamps.length
     );
-    for (const mesh of [poles, arms, shades, bulbs]) mesh.frustumCulled = false;
+    // Soft warm pool painted on the road under each lamp so the light spill
+    // reads clearly at night even on low-end GPUs.
+    const poolMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffc978,
+      transparent: true,
+      opacity: 0.16,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false
+    });
+    const pools = new THREE.InstancedMesh(
+      new THREE.CircleGeometry(7.5, 16),
+      poolMaterial,
+      lamps.length
+    );
+    pools.visible = false;
+    for (const mesh of [poles, arms, shades, bulbs, pools]) mesh.frustumCulled = false;
     const matrix = new THREE.Matrix4();
     const position = new THREE.Vector3();
     const rotation = new THREE.Quaternion();
+    const quarterTurn = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, Math.PI / 2, 0));
+    const flatRotation = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
     const scale = new THREE.Vector3(1, 1, 1);
     lamps.forEach((lamp, index) => {
       position.set(lamp.x, 2.9, lamp.z);
       matrix.compose(position, rotation, scale);
       poles.setMatrixAt(index, matrix);
 
-      const fixtureX = lamp.x - lamp.side * 2.1;
-      position.set(lamp.x - lamp.side * 1.0, 5.65, lamp.z);
-      matrix.compose(position, rotation, scale);
+      let fixtureX = lamp.x - lamp.side * 2.1;
+      let fixtureZ = lamp.z;
+      if (lamp.alongX) {
+        fixtureX = lamp.x;
+        fixtureZ = lamp.z - 2.1;
+        position.set(lamp.x, 5.65, lamp.z - 1.0);
+        matrix.compose(position, quarterTurn, scale);
+      } else {
+        position.set(lamp.x - lamp.side * 1.0, 5.65, lamp.z);
+        matrix.compose(position, rotation, scale);
+      }
       arms.setMatrixAt(index, matrix);
 
-      position.set(fixtureX, 5.54, lamp.z);
+      position.set(fixtureX, 5.54, fixtureZ);
       matrix.compose(position, rotation, scale);
       shades.setMatrixAt(index, matrix);
       position.y = 5.39;
       matrix.compose(position, rotation, scale);
       bulbs.setMatrixAt(index, matrix);
-      this.streetLampPositions.push(new THREE.Vector3(fixtureX, 5.35, lamp.z));
+
+      position.set(fixtureX, 0.014, fixtureZ);
+      matrix.compose(position, flatRotation, scale);
+      pools.setMatrixAt(index, matrix);
+      this.streetLampPositions.push(new THREE.Vector3(fixtureX, 5.35, fixtureZ));
     });
-    for (const mesh of [poles, arms, shades, bulbs]) mesh.instanceMatrix.needsUpdate = true;
+    for (const mesh of [poles, arms, shades, bulbs, pools]) mesh.instanceMatrix.needsUpdate = true;
     this.streetLampBulbs = bulbs;
-    this.lightGroup.add(poles, arms, shades, bulbs);
+    this.streetLampPools = pools;
+    this.lightGroup.add(poles, arms, shades, bulbs, pools);
 
     for (let i = 0; i < 10; i += 1) {
-      const light = new THREE.PointLight(0xffd49a, 42, 34, 2);
+      const light = new THREE.PointLight(0xffd49a, 96, 44, 2);
       light.visible = false;
       this.streetLampLights.push(light);
       scene.add(light);
@@ -971,10 +1012,11 @@ export class Traffic {
 
   private setNightMode(enabled: boolean): void {
     this.nightMode = enabled;
+    if (this.streetLampPools) this.streetLampPools.visible = enabled;
     const bulbMaterial = this.streetLampBulbs?.material;
     if (bulbMaterial instanceof THREE.MeshStandardMaterial) {
       bulbMaterial.color.set(enabled ? 0xffe6b2 : 0x5c513d);
-      bulbMaterial.emissiveIntensity = enabled ? 3.2 : 0.02;
+      bulbMaterial.emissiveIntensity = enabled ? 4 : 0.02;
     }
     for (const vehicle of this.list) {
       setVehicleNightLighting(vehicle.rig, enabled);
