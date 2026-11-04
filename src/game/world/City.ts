@@ -682,7 +682,11 @@ function getBlobMaterial(): THREE.MeshBasicMaterial {
 
 let junctionMaterial: THREE.MeshBasicMaterial | null = null;
 
-/** Painted yellow box junction, the kind found all over Nigerian cities. */
+/**
+ * Painted yellow box junction, the kind found all over Nigerian cities.
+ * Border only: the old dense diagonal lattice read as railway tracks from
+ * inside a vehicle, and a filled panel glowed like a slab at night.
+ */
 function getJunctionMaterial(): THREE.MeshBasicMaterial {
   if (junctionMaterial) return junctionMaterial;
   const size = 256;
@@ -692,27 +696,19 @@ function getJunctionMaterial(): THREE.MeshBasicMaterial {
   const ctx = canvas.getContext('2d');
   if (ctx) {
     ctx.clearRect(0, 0, size, size);
-    ctx.strokeStyle = 'rgba(238, 194, 44, 0.92)';
-    ctx.lineWidth = 11;
-    ctx.strokeRect(6, 6, size - 12, size - 12);
+    ctx.strokeStyle = 'rgba(238, 194, 44, 0.5)';
     ctx.lineWidth = 7;
-    for (let i = -size; i <= size; i += 52) {
-      ctx.beginPath();
-      ctx.moveTo(i, 0);
-      ctx.lineTo(i + size, size);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(i + size, 0);
-      ctx.lineTo(i, size);
-      ctx.stroke();
-    }
+    ctx.strokeRect(4, 4, size - 8, size - 8);
+    ctx.strokeStyle = 'rgba(238, 194, 44, 0.16)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(13, 13, size - 26, size - 26);
   }
   const tex = new THREE.CanvasTexture(canvas);
   junctionMaterial = new THREE.MeshBasicMaterial({
     map: tex,
     transparent: true,
     depthWrite: false,
-    opacity: 0.9
+    opacity: 0.85
   });
   return junctionMaterial;
 }
@@ -1475,7 +1471,8 @@ export function createCity(): City {
     { name: 'market', side: -1, z: -58, width: 15, depth: 12 },
     { name: 'school', side: 1, z: -112, width: 14, depth: 12 },
     { name: 'hospital', side: 1, z: 20, width: 13, depth: 11 },
-    { name: 'shop', id: 'garage-lobby', label: 'GARAGE LOBBY', side: -1, z: -6, width: 12, depth: 9 },
+    // Kept clear of the cross street at z=-12 so the lobby never sits on the road.
+    { name: 'shop', id: 'garage-lobby', label: 'GARAGE LOBBY', side: -1, z: 31, width: 12, depth: 7 },
     { name: 'garage', side: -1, z: 6, width: 12, depth: 10 },
     { name: 'restaurant', side: -1, z: 76, width: 11, depth: 9 },
     { name: 'shop', side: 1, z: 148, width: 10, depth: 9 },
@@ -1539,8 +1536,10 @@ export function createCity(): City {
   );
   const forecourtWidth = Math.abs(garageFrontX - garageForecourtRoadEdgeX);
   const forecourtX = (garageFrontX + garageForecourtRoadEdgeX) / 2;
-  const parkingStartZ = garageSite.z - 38;
-  const parkingEndZ = garageSite.z + 46;
+  // Keep the forecourt inside its own block: it used to run south across the
+  // cross street at z=-12, putting the lot (and its parked cars) on the road.
+  const parkingStartZ = garageSite.z - 6;
+  const parkingEndZ = garageSite.z + 48;
   const drivewayStartZ = garageSite.z - 3.1;
   const drivewayEndZ = garageSite.z + 3.1;
   const forecourtCenterY = 0.22;
@@ -3560,13 +3559,15 @@ export function createCity(): City {
     forecourtCenterY,
     (parkingStartZ + parkingEndZ) / 2
   );
-  const parkingSpaces: ParkingSpace[] = [-30, -22, 18, 26, 34, 42].map((offset) => ({
+  // All bays sit north of the cross street; the gap between offsets 20 and 32
+  // keeps the garage-lobby doorway at z=31 clear.
+  const parkingSpaces: ParkingSpace[] = [8, 14, 20, 32, 38, 44].map((offset) => ({
     x: forecourtX,
     z: garageSite.z + offset,
     yaw: 0,
     surfaceY: forecourtSurfaceY
   }));
-  const parkingLineOffsets = [-38, -34, -26, -18, -10, 14, 22, 30, 38, 46];
+  const parkingLineOffsets = [5, 11, 17, 23, 29, 35, 41, 47];
   for (const offset of parkingLineOffsets) {
     box(
       0xe8e2cf,
