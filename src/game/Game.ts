@@ -24,6 +24,7 @@ import { Pedestrians } from './entities/Pedestrians';
 import { StreetPeople } from './entities/StreetPeople';
 import { Traffic } from './entities/Traffic';
 import { Planes } from './entities/Planes';
+import { Birds } from './entities/Birds';
 import { TrainService } from './entities/Train';
 import {
   City,
@@ -230,6 +231,7 @@ export class Game {
   private pedestrians: Pedestrians;
   private streetPeople: StreetPeople;
   private planes: Planes;
+  private birds: Birds;
   private thugs: Thugs;
   private police: Police;
   private interiors: Interiors;
@@ -273,12 +275,16 @@ export class Game {
   private toastTimer = 0;
 
   private camYaw = 0;
-  private camPitch = 0.28;
+  private camPitch = 0.2;
   private camDist = 5.4;
   private camPos = new THREE.Vector3(0, 2.6, 8);
   private camDir = new THREE.Vector3();
   private sunDirection = new THREE.Vector3();
   private moonDirection = new THREE.Vector3();
+  // Sky-body tracks sit lower than the lighting direction so the sun and moon
+  // stay inside the normal third-person camera view.
+  private sunSkyDirection = new THREE.Vector3();
+  private moonSkyDirection = new THREE.Vector3();
   private cameraColliders: Collider[] = [];
   private snapCameraNext = false;
   private camTarget = new THREE.Vector3();
@@ -374,20 +380,20 @@ export class Game {
     this.sunLight.shadow.normalBias = 0.03;
     this.moonLight = new THREE.DirectionalLight(0x9db8ec, 0.22);
     this.sunOrb = new THREE.Mesh(
-      new THREE.SphereGeometry(10, 16, 12),
+      new THREE.SphereGeometry(12, 20, 14),
       new THREE.MeshBasicMaterial({
         color: 0xffe6a3,
-        depthTest: false,
         depthWrite: false,
+        fog: false,
         toneMapped: false
       })
     );
     this.moonOrb = new THREE.Mesh(
-      new THREE.SphereGeometry(8, 16, 12),
+      new THREE.SphereGeometry(9.5, 18, 12),
       new THREE.MeshBasicMaterial({
         color: 0xe6ecff,
-        depthTest: false,
         depthWrite: false,
+        fog: false,
         toneMapped: false
       })
     );
@@ -395,10 +401,10 @@ export class Game {
     this.moonOrb.frustumCulled = false;
     this.sunOrb.renderOrder = 2;
     this.moonOrb.renderOrder = 2;
-    this.sunGlow = this.createSkyGlow('rgba(255, 214, 140, 0.85)');
-    this.moonGlow = this.createSkyGlow('rgba(190, 210, 255, 0.6)');
-    this.sunGlow.scale.set(74, 74, 1);
-    this.moonGlow.scale.set(46, 46, 1);
+    this.sunGlow = this.createSkyGlow('rgba(255, 214, 140, 0.62)');
+    this.moonGlow = this.createSkyGlow('rgba(190, 210, 255, 0.45)');
+    this.sunGlow.scale.set(82, 82, 1);
+    this.moonGlow.scale.set(52, 52, 1);
     this.scene.add(
       this.hemisphereLight,
       this.sunLight,
@@ -482,6 +488,7 @@ export class Game {
     this.pedestrians = new Pedestrians(this.scene, this.city, IS_ANDROID ? 32 : 60);
     this.streetPeople = new StreetPeople(this.scene, this.city);
     this.planes = new Planes(this.scene);
+    this.birds = new Birds(this.scene, IS_ANDROID ? 12 : 20);
     const callbacks = this.makeCombatCallbacks();
     this.interiors.setKilledCallback((position) => callbacks.onCivilianKilled(position));
     this.pedestrians.setKilledCallback((position) => callbacks.onCivilianKilled(position));
@@ -754,8 +761,8 @@ export class Game {
         map: texture,
         blending: THREE.AdditiveBlending,
         transparent: true,
-        depthTest: false,
         depthWrite: false,
+        fog: false,
         toneMapped: false
       })
     );
@@ -779,6 +786,16 @@ export class Game {
       Math.sin(lunarAngle) * 0.5,
       -0.72
     ).normalize();
+    this.sunSkyDirection.set(
+      Math.cos(solarAngle) * 0.9,
+      Math.sin(solarAngle) * 0.13,
+      -1.05
+    ).normalize();
+    this.moonSkyDirection.set(
+      Math.cos(lunarAngle) * 0.9,
+      Math.sin(lunarAngle) * 0.13,
+      -1.05
+    ).normalize();
 
     this.sunLight.position.copy(this.camTarget).addScaledVector(this.sunDirection, 60);
     this.sunLight.target.position.copy(this.camTarget);
@@ -787,14 +804,14 @@ export class Game {
 
     // Keep the sky bodies anchored far away from the camera, the way a real
     // sun and moon sit on the celestial sphere.
-    const skyDistance = 300;
+    const skyDistance = 280;
     const skyCenter = this.camera.position;
-    this.sunOrb.position.copy(skyCenter).addScaledVector(this.sunDirection, skyDistance);
-    this.moonOrb.position.copy(skyCenter).addScaledVector(this.moonDirection, skyDistance);
+    this.sunOrb.position.copy(skyCenter).addScaledVector(this.sunSkyDirection, skyDistance);
+    this.moonOrb.position.copy(skyCenter).addScaledVector(this.moonSkyDirection, skyDistance);
     this.sunGlow.position.copy(this.sunOrb.position);
     this.moonGlow.position.copy(this.moonOrb.position);
-    const sunVisible = this.sunDirection.y > 0.02;
-    const moonVisible = this.moonDirection.y > 0.02;
+    const sunVisible = this.sunSkyDirection.y > 0.01;
+    const moonVisible = this.moonSkyDirection.y > 0.01;
     this.sunOrb.visible = sunVisible;
     this.sunGlow.visible = sunVisible;
     this.moonOrb.visible = moonVisible;
@@ -958,6 +975,7 @@ export class Game {
         setVehicleNightLighting(activeVehicle, this.nightMode, true);
       }
       this.pedestrians.update(dt, this.city, playerPosition, vehiclePosition);
+      this.birds.update(dt, playerPosition, !this.nightMode && !this.inside);
       this.streetPeople.update(dt);
       this.thugs.update(
         dt,
@@ -997,6 +1015,8 @@ export class Game {
 
       this.audio.siren(this.wanted >= 2 || (this.wanted >= 1 && this.police.isSeen));
     } else {
+      // Keep the flock hidden and parked with the player while indoors.
+      this.birds.update(dt, this.player.group.position, false);
       this.audio.siren(false);
       // While the player is hidden inside, police work the building entrance.
       // They cannot see or shoot through walls, so a long hideout lets the
@@ -1585,7 +1605,7 @@ export class Game {
     this.carYaw = vehicle.group.rotation.y;
     const isBike = vehicle.length < 2.5;
     this.camDist = isBike ? 2.2 : 5.4;
-    this.camPitch = isBike ? 0.18 : 0.28;
+    this.camPitch = isBike ? 0.16 : 0.22;
     this.camYaw = this.carYaw + Math.PI;
     if (vehicle.driver) vehicle.driver.visible = true;
     vehicle.doorOpen = Boolean(vehicle.doorPivot);
@@ -2982,7 +3002,7 @@ export class Game {
     this.activeVehicle = null;
     this.carSpeed = 0;
     this.camYaw = 0;
-    this.camPitch = 0.28;
+    this.camPitch = 0.2;
     this.camDist = 5.4;
     this.wanted = 0;
     this.wantedDelay = 0;

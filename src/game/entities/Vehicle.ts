@@ -328,17 +328,21 @@ function finishVehicle(rig: VehicleRig): VehicleRig {
   const beamMaterial = new THREE.MeshBasicMaterial({
     color: 0xfff1cc,
     transparent: true,
-    opacity: 0.17,
+    opacity: 0.1,
     blending: THREE.AdditiveBlending,
     side: THREE.DoubleSide,
     depthWrite: false,
     toneMapped: false
   });
-  const beamGeometry = new THREE.CylinderGeometry(0.08, 3.1, 38, 12, 1, true);
+  // Narrow at the lamp, widening toward the road. The cone is flattened
+  // vertically and tipped a few degrees down so it lies on the tarmac instead
+  // of glowing up into the air like a searchlight.
+  const beamGeometry = new THREE.CylinderGeometry(0.06, 2.2, 32, 12, 1, true);
   for (const side of [-1, 1]) {
     const beam = new THREE.Mesh(beamGeometry, beamMaterial);
-    beam.rotation.x = -Math.PI / 2;
-    beam.position.set(side * Math.min(rig.width * 0.28, 0.68), 0.8, rig.length / 2 + 19);
+    beam.rotation.x = -Math.PI / 2 + 0.09;
+    beam.scale.set(1, 1, 0.42);
+    beam.position.set(side * Math.min(rig.width * 0.28, 0.68), 0.55, rig.length / 2 + 15);
     headlightBeams.add(beam);
   }
   headlightBeams.visible = false;
@@ -348,13 +352,13 @@ function finishVehicle(rig: VehicleRig): VehicleRig {
   const headlightSpots = new THREE.Group();
   headlightSpots.name = 'headlight-spots';
   for (const side of [-1, 1]) {
-    const spot = new THREE.SpotLight(0xfff1cf, 165, 72, Math.PI / 7, 0.62, 1.35);
-    spot.position.set(side * Math.min(rig.width * 0.28, 0.68), 0.8, rig.length / 2 - 0.05);
+    const spot = new THREE.SpotLight(0xfff1cf, 120, 62, Math.PI / 8.5, 0.7, 1.5);
+    spot.position.set(side * Math.min(rig.width * 0.28, 0.68), 0.72, rig.length / 2 - 0.05);
     spot.castShadow = false;
     spot.target.position.set(
       side * Math.min(rig.width * 0.3, 0.72),
-      0.1,
-      rig.length / 2 + 36
+      0.02,
+      rig.length / 2 + 30
     );
     headlightSpots.add(spot, spot.target);
   }
