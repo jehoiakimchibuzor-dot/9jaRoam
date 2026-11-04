@@ -2264,16 +2264,20 @@ export function createCity(): City {
     }
   }
 
-  // Split the cross-street sidewalks at the avenues and ring roads, not at the
-  // cross streets themselves.
+  // Split the cross-street sidewalks at the boulevard, avenues and ring roads,
+  // not at the cross streets themselves. Without the boulevard cut, every cross
+  // street laid a raised sidewalk band straight across the main carriageway.
+  const crossSidewalkCuts = [
+    { at: 0, half: ROAD_HALF + 0.34 },
+    ...SIDE_ROADS.map((sx) => ({ at: sx, half: roadHalfFor(sx) + 1.5 }))
+  ].sort((a, b) => a.at - b.at);
   const xSegments: Array<[number, number]> = [];
   {
     let start = WEST_SHORE_X;
-    for (const sx of SIDE_ROADS) {
-      const halfWidth = roadHalfFor(sx);
-      const end = Math.max(start, sx - halfWidth - 1.5);
+    for (const cut of crossSidewalkCuts) {
+      const end = Math.max(start, cut.at - cut.half);
       if (end - start > 1) xSegments.push([start, end]);
-      start = Math.max(start, sx + halfWidth + 1.5);
+      start = Math.max(start, cut.at + cut.half);
     }
     if (WORLD_HALF_X - start > 1) xSegments.push([start, WORLD_HALF_X]);
   }
