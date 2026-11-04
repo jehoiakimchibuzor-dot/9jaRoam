@@ -743,7 +743,12 @@ function seededRandom(seed: number): () => number {
   };
 }
 
+const signTextureCache = new Map<string, THREE.CanvasTexture>();
+
 function makeSignTexture(text: string, bg: string, fg: string): THREE.CanvasTexture {
+  const cacheKey = `${text}|${bg}|${fg}`;
+  const cached = signTextureCache.get(cacheKey);
+  if (cached) return cached;
   const canvas = document.createElement('canvas');
   canvas.width = 512;
   canvas.height = 128;
@@ -767,6 +772,7 @@ function makeSignTexture(text: string, bg: string, fg: string): THREE.CanvasText
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.anisotropy = 4;
+  signTextureCache.set(cacheKey, tex);
   return tex;
 }
 
@@ -3664,6 +3670,105 @@ export function createCity(): City {
     -fuelSite.side * Math.PI / 2,
     4.2
   );
+
+  // --- Dead-end barriers -------------------------------------------------
+  // Every piece of tarmac that stops for good gets a red warning sign and a
+  // solid barrier, so nobody drives through empty air or into an invisible
+  // wall at the edge of the map.
+  const addRoadEnd = (
+    x: number,
+    z: number,
+    across: 'x' | 'z',
+    faceYaw: number,
+    halfWidth: number,
+    baseY = 0
+  ): void => {
+    const red = 0xc9342b;
+    const white = 0xf0e9db;
+    const spanX = across === 'x' ? halfWidth * 2 + 0.9 : 0.7;
+    const spanZ = across === 'x' ? 0.7 : halfWidth * 2 + 0.9;
+    // Concrete kerb under the barrier.
+    box(0x6b6f73, 0.95, spanX, 0.28, spanZ, x, baseY + 0.14, z);
+    // Chequered red-and-white rail.
+    const segments = 8;
+    for (let i = 0; i < segments; i += 1) {
+      const t0 = -halfWidth + (i / segments) * halfWidth * 2;
+      const t1 = -halfWidth + ((i + 1) / segments) * halfWidth * 2;
+      const colour = i % 2 === 0 ? red : white;
+      const cx = across === 'x' ? x + (t0 + t1) / 2 : x;
+      const cz = across === 'x' ? z : z + (t0 + t1) / 2;
+      const w = across === 'x' ? Math.abs(t1 - t0) : 0.46;
+      const d = across === 'x' ? 0.46 : Math.abs(t1 - t0);
+      box(colour, 0.8, w, 0.6, d, cx, baseY + 0.78, cz);
+    }
+    // End posts.
+    for (const side of [-1, 1]) {
+      const px = across === 'x' ? x + side * (halfWidth + 0.35) : x;
+      const pz = across === 'x' ? z : z + side * (halfWidth + 0.35);
+      box(0x3c4045, 0.85, 0.38, 1.55, 0.38, px, baseY + 0.78, pz);
+      box(0xd7c23d, 0.7, 0.46, 0.16, 0.46, px, baseY + 1.6, pz);
+    }
+    // Big red board facing the traffic that is about to run out of road.
+    addSign(
+      group,
+      'NO ROAD AHEAD',
+      '#8a1414',
+      '#ffe9e9',
+      x + Math.sin(faceYaw) * 0.55,
+      baseY + 2.55,
+      z + Math.cos(faceYaw) * 0.55,
+      faceYaw,
+      Math.min(6.6, halfWidth * 1.5)
+    );
+    colliders.push({
+      minX: across === 'x' ? x - halfWidth - 0.5 : x - 0.7,
+      maxX: across === 'x' ? x + halfWidth + 0.5 : x + 0.7,
+      minZ: across === 'x' ? z - 0.7 : z - halfWidth - 0.5,
+      maxZ: across === 'x' ? z + 0.7 : z + halfWidth + 0.5
+    });
+  };
+
+  // Boulevards and avenues run out at the north and south ends of the map.
+  for (const roadX of [0, ...SIDE_ROADS]) {
+    const halfW = roadX === 0 ? ROAD_HALF : roadHalfFor(roadX);
+    addRoadEnd(roadX, half - 4, 'x', Math.PI, halfW);
+    addRoadEnd(roadX, -half + 4, 'x', 0, halfW);
+  }
+
+  // Cross streets stop at the desert on the east and at the west shoreline.
+  for (const cz of CROSS_ZS) {
+    if (Math.abs(cz - DESERT_HIGHWAY_Z) > 0.5) {
+      addRoadEnd(WORLD_HALF_X - 4, cz, 'z', -Math.PI / 2, CROSS_HALF);
+    }
+    addRoadEnd(WEST_DISTRICT_MIN_X + 4, cz, 'z', Math.PI / 2, CROSS_HALF);
+  }
+
+  // Desert highway and frontage road ends.
+  addRoadEnd(
+    DESERT_HIGHWAY_END_X - 4,
+    DESERT_HIGHWAY_Z,
+    'z',
+    -Math.PI / 2,
+    DESERT_HIGHWAY_HALF_WIDTH
+  );
+  addRoadEnd(
+    DESERT_FRONTAGE_END_X - 4,
+    DESERT_FRONTAGE_Z,
+    'z',
+    -Math.PI / 2,
+    DESERT_FRONTAGE_HALF_WIDTH
+  );
+  addRoadEnd(
+    DESERT_FRONTAGE_START_X + 4,
+    DESERT_FRONTAGE_Z,
+    'z',
+    Math.PI / 2,
+    DESERT_FRONTAGE_HALF_WIDTH
+  );
+
+  // The causeway is raised, so its end barriers sit on the deck.
+  addRoadEnd(CAUSEWAY_X, half - 4, 'x', Math.PI, CAUSEWAY_HALF_W, CAUSEWAY_DECK_Y);
+  addRoadEnd(CAUSEWAY_X, -half + 4, 'x', 0, CAUSEWAY_HALF_W, CAUSEWAY_DECK_Y);
 
   flushBatches(group);
 

@@ -66,6 +66,15 @@ interface TrafficVehicle {
   visible: boolean;
   wreckedAt: number;
   frontier?: boolean;
+  /** Centre line of this road, used to mirror into the opposite lane on a U-turn. */
+  center: number;
+  /** Current heading; normally derived from dir, but animated during a U-turn. */
+  yaw: number;
+  turning: number;
+  turnBaseYaw: number;
+  turnFromFixed: number;
+  turnToFixed: number;
+  turnSign: number;
 }
 
 interface SpawnSpec {
@@ -92,6 +101,40 @@ const SIDE_LANE = SIDE_HALF * 0.5; // 4.5 on an 18 m avenue
 const OUTER_LANE = OUTER_HALF * 0.5; // 4 on a 16 m ring road
 const FAR_LANE = FAR_HALF * 0.5; // the outermost ring
 const CROSS_LANE = CROSS_HALF * 0.5; // 4.5
+
+/** How long a car spends swinging around at a dead end, in seconds. */
+const TURN_SECONDS = 1.7;
+
+function yawForHeading(axis: Axis, dir: 1 | -1): number {
+  if (axis === 'z') return dir === 1 ? 0 : Math.PI;
+  return dir === 1 ? Math.PI / 2 : -Math.PI / 2;
+}
+
+function nearestNumber(values: readonly number[], target: number): number {
+  let best = values[0] ?? 0;
+  let bestDistance = Infinity;
+  for (const value of values) {
+    const distance = Math.abs(value - target);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = value;
+    }
+  }
+  return best;
+}
+
+/** Centre line of the road a spawn lane belongs to. */
+function laneCenterFor(axis: Axis, fixed: number, frontier: boolean): number {
+  if (axis === 'x') {
+    if (frontier) {
+      return Math.abs(fixed - DESERT_HIGHWAY_Z) <= Math.abs(fixed - DESERT_FRONTAGE_Z)
+        ? DESERT_HIGHWAY_Z
+        : DESERT_FRONTAGE_Z;
+    }
+    return nearestNumber(CROSS_ZS, fixed);
+  }
+  return nearestNumber([0, CAUSEWAY_X, ...SIDE_ROADS], fixed);
+}
 
 const VIEW_DISTANCE = IS_ANDROID ? 100 : 140;
 // Only the boulevard crossings carry signal heads. Avenue junctions are
@@ -298,12 +341,13 @@ export class Traffic {
       ensureVehicleHealth(rig);
 
       const axisLength = spec.axis === 'z' ? Z_LIMIT : X_LIMIT;
+      const yaw = yawForHeading(spec.axis, spec.dir);
       if (spec.axis === 'z') {
         rig.group.position.set(spec.fixed, this.city.deckHeightAt(spec.fixed, spec.along, 'z'), spec.along);
-        rig.group.rotation.y = spec.dir === 1 ? 0 : Math.PI;
+        rig.group.rotation.y = yaw;
       } else {
         rig.group.position.set(spec.along, this.city.deckHeightAt(spec.along, spec.fixed, 'x'), spec.fixed);
-        rig.group.rotation.y = spec.dir === 1 ? Math.PI / 2 : -Math.PI / 2;
+        rig.group.rotation.y = yaw;
       }
       scene.add(rig.group);
 
@@ -322,7 +366,14 @@ export class Traffic {
         stop: 0,
         visible: true,
         wreckedAt: -1,
-        frontier: spec.frontier
+        frontier: spec.frontier,
+        center: laneCenterFor(spec.axis, spec.fixed, Boolean(spec.frontier)),
+        yaw,
+        turning: 0,
+        turnBaseYaw: yaw,
+        turnFromFixed: spec.fixed,
+        turnToFixed: spec.fixed,
+        turnSign: 1
       });
       this.nextId += 1;
     }
@@ -488,13 +539,45 @@ export class Traffic {
         target = 0;
       }
 
-      const rate = target < v.speed ? 4.6 : 1.8;
-      v.speed += (target - v.speed) * (1 - Math.exp(-rate * dt));
-      v.speed = Math.max(0, Math.min(v.speed, hardCap));
+      if (v.turning > 0) {
+        // Dead end: stop, swing the car round and mirror it into the opposite
+        // lane instead of teleporting it off the road.
+        v.turning = Math.max(0, v.turning - dt);
+        const progress = Math.min(1, 1 - v.turning / TURN_SECONDS);
+        const eased = progress * progress * (3 - 2 * progress);
+        v.speed = 0;
+        v.fixed = v.turnFromFixed + (v.turnToFixed - v.turnFromFixed) * eased;
+        v.yaw = v.turnBaseYaw + v.turnSign * Math.PI * eased;
+        if (v.turning <= 0) {
+          const atMax = v.along >= (v.min + v.max) / 2;
+          v.dir = v.dir === 1 ? -1 : 1;
+          v.along = atMax ? v.max - 5 : v.min + 5;
+          v.speed = v.cruise * 0.3;
+          v.yaw = yawForHeading(v.axis, v.dir);
+          v.center = laneCenterFor(v.axis, v.fixed, Boolean(v.frontier));
+        }
+      } else {
+        const rate = target < v.speed ? 4.6 : 1.8;
+        v.speed += (target - v.speed) * (1 - Math.exp(-rate * dt));
+        v.speed = Math.max(0, Math.min(v.speed, hardCap));
 
-      v.along += v.dir * v.speed * dt;
-      if (v.along > v.max) v.along = v.min + 2;
-      else if (v.along < v.min) v.along = v.max - 2;
+        v.along += v.dir * v.speed * dt;
+        if (v.along >= v.max || v.along <= v.min) {
+          v.along = Math.min(v.max, Math.max(v.min, v.along));
+          v.turnBaseYaw = v.yaw;
+          v.turnFromFixed = v.fixed;
+          v.turnToFixed = 2 * v.center - v.fixed;
+          const lateral = Math.sign(v.turnToFixed - v.turnFromFixed) || 1;
+          // Pick the arc that noses toward the opposite lane, not off the road.
+          v.turnSign = v.axis === 'x'
+            ? -v.dir * lateral
+            : v.dir * lateral;
+          v.turning = TURN_SECONDS;
+          v.speed = 0;
+        } else {
+          v.yaw = yawForHeading(v.axis, v.dir);
+        }
+      }
 
       if (v.axis === 'z') {
         v.rig.group.position.set(
@@ -502,15 +585,14 @@ export class Traffic {
           this.city.deckHeightAt(v.fixed, v.along, 'z', v.rig.group.position.y),
           v.along
         );
-        v.rig.group.rotation.y = v.dir === 1 ? 0 : Math.PI;
       } else {
         v.rig.group.position.set(
           v.along,
           this.city.deckHeightAt(v.along, v.fixed, 'x', v.rig.group.position.y),
           v.fixed
         );
-        v.rig.group.rotation.y = v.dir === 1 ? Math.PI / 2 : -Math.PI / 2;
       }
+      v.rig.group.rotation.y = v.yaw;
 
       const distance = playerPos
         ? Math.hypot(v.rig.group.position.x - playerPos.x, v.rig.group.position.z - playerPos.z)
@@ -697,12 +779,18 @@ export class Traffic {
   }
 
   private place(v: TrafficVehicle): void {
+    v.yaw = yawForHeading(v.axis, v.dir);
+    v.turning = 0;
+    v.turnBaseYaw = v.yaw;
+    v.turnFromFixed = v.fixed;
+    v.turnToFixed = v.fixed;
+    v.center = laneCenterFor(v.axis, v.fixed, Boolean(v.frontier));
     if (v.axis === 'z') {
       v.rig.group.position.set(v.fixed, this.city.deckHeightAt(v.fixed, v.along, 'z'), v.along);
-      v.rig.group.rotation.y = v.dir === 1 ? 0 : Math.PI;
+      v.rig.group.rotation.y = v.yaw;
     } else {
       v.rig.group.position.set(v.along, this.city.deckHeightAt(v.along, v.fixed, 'x'), v.fixed);
-      v.rig.group.rotation.y = v.dir === 1 ? Math.PI / 2 : -Math.PI / 2;
+      v.rig.group.rotation.y = v.yaw;
     }
   }
 

@@ -323,42 +323,22 @@ function finishVehicle(rig: VehicleRig): VehicleRig {
     if (rig.access) rig.access.cameraHeight *= heightFactor;
   }
 
-  const headlightBeams = new THREE.Group();
-  headlightBeams.name = 'headlight-beams';
-  const beamMaterial = new THREE.MeshBasicMaterial({
-    color: 0xfff1cc,
-    transparent: true,
-    opacity: 0.1,
-    blending: THREE.AdditiveBlending,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-    toneMapped: false
-  });
-  // Narrow at the lamp, widening toward the road. The cone is flattened
-  // vertically and tipped a few degrees down so it lies on the tarmac instead
-  // of glowing up into the air like a searchlight.
-  const beamGeometry = new THREE.CylinderGeometry(0.06, 2.2, 32, 12, 1, true);
-  for (const side of [-1, 1]) {
-    const beam = new THREE.Mesh(beamGeometry, beamMaterial);
-    beam.rotation.x = -Math.PI / 2 + 0.09;
-    beam.scale.set(1, 1, 0.42);
-    beam.position.set(side * Math.min(rig.width * 0.28, 0.68), 0.55, rig.length / 2 + 15);
-    headlightBeams.add(beam);
-  }
-  headlightBeams.visible = false;
-  rig.group.add(headlightBeams);
-  rig.group.userData.headlightBeams = headlightBeams;
-
+  // Headlights are two real spotlights aimed down at the tarmac. There is
+  // deliberately no additive cone mesh: a glowing volume above the bonnet
+  // reads as a searchlight and washes out the whole car at night.
   const headlightSpots = new THREE.Group();
   headlightSpots.name = 'headlight-spots';
   for (const side of [-1, 1]) {
-    const spot = new THREE.SpotLight(0xfff1cf, 120, 62, Math.PI / 8.5, 0.7, 1.5);
-    spot.position.set(side * Math.min(rig.width * 0.28, 0.68), 0.72, rig.length / 2 - 0.05);
+    // Soft low beam aimed down the tarmac. The wide penumbra keeps the pool
+    // gentle instead of a hard white wedge, and because the cone is tipped at
+    // the road it never glows up over the bonnet.
+    const spot = new THREE.SpotLight(0xfff1cf, 6200, 62, Math.PI / 10, 0.85, 1.6);
+    spot.position.set(side * Math.min(rig.width * 0.28, 0.68), 0.7, rig.length / 2 - 0.05);
     spot.castShadow = false;
     spot.target.position.set(
       side * Math.min(rig.width * 0.3, 0.72),
-      0.02,
-      rig.length / 2 + 30
+      -0.55,
+      rig.length / 2 + 18
     );
     headlightSpots.add(spot, spot.target);
   }
@@ -373,9 +353,7 @@ export function setVehicleNightLighting(
   enabled: boolean,
   illuminateRoad = false
 ): void {
-  const beams = rig.group.userData.headlightBeams as THREE.Group | undefined;
   const spots = rig.group.userData.headlightSpots as THREE.Group | undefined;
-  if (beams) beams.visible = enabled;
   if (spots) spots.visible = enabled && illuminateRoad;
 }
 
