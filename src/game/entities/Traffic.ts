@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import {
   City,
+  AIRPORT_R,
+  AIRPORT_X,
+  AIRPORT_Z,
   CAUSEWAY_X,
   CROSS_HALF,
   CROSS_ZS,
@@ -102,6 +105,17 @@ const OUTER_LANE = OUTER_HALF * 0.5; // 4 on a 16 m ring road
 const FAR_LANE = FAR_HALF * 0.5; // the outermost ring
 const CROSS_LANE = CROSS_HALF * 0.5; // 4.5
 
+/**
+ * Cross street the airport was built across: that arm stops at the perimeter
+ * fence, so traffic must turn back there instead of driving over the apron.
+ */
+function laneMaxX(fixed: number): number {
+  if (Math.abs(fixed - AIRPORT_Z) >= AIRPORT_R) return X_LIMIT;
+  // The trimmed arm ends at the perimeter fence, so allow room for the
+  // U-turn swing but never reach the apron.
+  return Math.min(X_LIMIT, AIRPORT_X - AIRPORT_R - 8);
+}
+
 /** How long a car spends swinging around at a dead end, in seconds. */
 const TURN_SECONDS = 1.7;
 
@@ -199,7 +213,7 @@ const SPAWNS: SpawnSpec[] = [
   { kind: 'sport', color: SPORT_COLORS[2], axis: 'z', fixed: -624 + SIDE_LANE, dir: -1, along: 180, cruise: 18.2 },
   { kind: 'danfo', axis: 'z', fixed: -552 - SIDE_LANE, dir: 1, along: 320, cruise: 9.2 },
   { kind: 'sedan', color: SEDAN_COLORS[4], axis: 'z', fixed: -552 + SIDE_LANE, dir: -1, along: -320, cruise: 12.4 },
-  { kind: 'sedan', color: SEDAN_COLORS[0], axis: 'x', fixed: CROSS_ZS[2] + CROSS_LANE, dir: 1, along: -500, cruise: 12.5 },
+  { kind: 'sedan', color: SEDAN_COLORS[0], axis: 'x', fixed: CROSS_ZS[2] + CROSS_LANE, dir: 1, along: -500, cruise: 12.5, max: laneMaxX(CROSS_ZS[2] + CROSS_LANE) },
   { kind: 'keke', axis: 'x', fixed: CROSS_ZS[4] - CROSS_LANE, dir: -1, along: -560, cruise: 8.8 },
 
   // Extra boulevard traffic for the longer city.
@@ -225,7 +239,7 @@ const SPAWNS: SpawnSpec[] = [
   { kind: 'sport', color: SPORT_COLORS[2], axis: 'z', fixed: FAR_ROAD_X - FAR_LANE, dir: 1, along: 340, cruise: 18.6 },
 
   // More cross-town traffic.
-  { kind: 'sedan', color: SEDAN_COLORS[2], axis: 'x', fixed: CROSS_ZS[2] + CROSS_LANE, dir: 1, along: 150, cruise: 12.4 },
+  { kind: 'sedan', color: SEDAN_COLORS[2], axis: 'x', fixed: CROSS_ZS[2] + CROSS_LANE, dir: 1, along: 150, cruise: 12.4, max: laneMaxX(CROSS_ZS[2] + CROSS_LANE) },
   { kind: 'bike', color: 0x2f6fa8, axis: 'x', fixed: CROSS_ZS[5] - CROSS_LANE, dir: -1, along: -160, cruise: 15.1 },
   { kind: 'danfo', axis: 'x', fixed: CROSS_ZS[3] + CROSS_LANE, dir: 1, along: -20, cruise: 9 },
   { kind: 'sedan', color: SEDAN_COLORS[0], axis: 'x', fixed: CROSS_ZS[6] - CROSS_LANE, dir: -1, along: 180, cruise: 12.2 },
@@ -800,7 +814,7 @@ export class Traffic {
     v.wreckedAt = -1;
     for (let attempt = 0; attempt < 8; attempt += 1) {
       const lane = LANES[Math.floor(Math.random() * LANES.length)];
-      const limit = lane.axis === 'z' ? Z_LIMIT : X_LIMIT;
+      const limit = lane.axis === 'z' ? Z_LIMIT : laneMaxX(lane.fixed);
       const centre = lane.axis === 'z' ? player.z : player.x;
       const along = this.nearbyCoordinate(
         centre,

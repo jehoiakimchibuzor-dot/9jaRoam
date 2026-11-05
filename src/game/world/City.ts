@@ -261,6 +261,11 @@ export const RIVER_MAX_X = 310;
 export const RIVER_SURFACE_Y = -1.15;
 export const CROSS_HALF = 9;
 export const CROSS_ZS = [-488, -336, -180, -12, 128, 264, 412];
+// The international airport sits on the far east coast, past the last row of
+// east-bank buildings. Nothing else may be generated inside this circle.
+export const AIRPORT_X = 560;
+export const AIRPORT_Z = -200;
+export const AIRPORT_R = 100;
 // Ocean beyond the city edges.
 export const OCEAN_EDGE = 860;
 export const OCEAN_SURFACE_Y = -0.35;
@@ -1583,6 +1588,26 @@ function isRoadAt(x: number, z: number, includeCauseway = true): boolean {
   return includeCauseway && onCauseway(x, z);
 }
 
+/** True inside the airport perimeter, where no city blocks may be generated. */
+function inAirportGrounds(x: number, z: number): boolean {
+  const dx = x - AIRPORT_X;
+  const dz = z - AIRPORT_Z;
+  return dx * dx + dz * dz <= AIRPORT_R * AIRPORT_R;
+}
+
+/**
+ * East end of a cross street. Cross streets run to the world edge, except the
+ * one the airport was built across: that arm stops at the perimeter fence so
+ * no tarmac, paint or traffic ever reaches the apron.
+ */
+function crossStreetEndX(cz: number): number {
+  const corridor = Math.abs(cz - AIRPORT_Z);
+  // The road band must actually reach into the airport circle.
+  if (corridor >= AIRPORT_R) return WORLD_HALF_X;
+  const reach = Math.sqrt(AIRPORT_R * AIRPORT_R - corridor * corridor);
+  return Math.min(WORLD_HALF_X, AIRPORT_X - reach);
+}
+
 function onCrossBayBridge(x: number, z: number): boolean {
   if (x < WEST_DISTRICT_MAX_X || x > WEST_SHORE_X) return false;
   return CROSS_ZS.some((cz) => Math.abs(z - cz) <= CROSS_HALF + 4.5);
@@ -1715,7 +1740,9 @@ export function createCity(): City {
   westDistrictGround.receiveShadow = true;
   group.add(westDistrictGround);
   const eastGroundMinX = RIVER_MAX_X;
-  const eastGroundMaxX = WORLD_HALF_X + GROUND_EXTRA;
+  // Past the nominal world edge so the airport apron (out to x=660) still
+  // stands on solid ground instead of thin air over the ocean.
+  const eastGroundMaxX = Math.max(WORLD_HALF_X + GROUND_EXTRA, AIRPORT_X + AIRPORT_R + 6);
   const eastGroundMinZ = -half - GROUND_EXTRA;
   const eastGroundMaxZ = half + GROUND_EXTRA;
   const subwayOpenings = RAIL_STATIONS.map((station) => ({
@@ -2117,9 +2144,8 @@ export function createCity(): City {
   }
 
   // --- Cross streets. They stop at the west shoreline; the causeway takes over
-  // the crossing from there.
-  const crossSpanX = WORLD_HALF_X - WEST_SHORE_X;
-  const crossMidX = (WEST_SHORE_X + WORLD_HALF_X) / 2;
+  // the crossing from there. The arm the airport sits across stops at the
+  // perimeter fence instead of running out over the apron.
   const westCrossSpanX = WEST_DISTRICT_MAX_X - WEST_DISTRICT_MIN_X;
   const westCrossMidX = (WEST_DISTRICT_MIN_X + WEST_DISTRICT_MAX_X) / 2;
   const westSidewalkSegments: Array<[number, number]> = [];
@@ -2135,19 +2161,26 @@ export function createCity(): City {
     if (WEST_DISTRICT_MAX_X - start > 1) westSidewalkSegments.push([start, WEST_DISTRICT_MAX_X]);
   }
   for (const cz of CROSS_ZS) {
-    box(0x3f4246, 1, crossSpanX, 0.2, CROSS_HALF * 2, crossMidX, -0.1, cz);
+    const roadEndX = crossStreetEndX(cz);
+    const armSpanX = roadEndX - WEST_SHORE_X;
+    const armMidX = (WEST_SHORE_X + roadEndX) / 2;
+    box(0x3f4246, 1, armSpanX, 0.2, CROSS_HALF * 2, armMidX, -0.1, cz);
     for (const dz of [-0.22, 0.22]) {
-      box(0xe6c445, 0.95, crossSpanX, 0.012, 0.12, crossMidX, 0.013, cz + dz);
+      box(0xe6c445, 0.95, armSpanX, 0.012, 0.12, armMidX, 0.013, cz + dz);
     }
     for (const laneOffset of [-CROSS_HALF * 0.52, CROSS_HALF * 0.52]) {
       for (let x = WEST_SHORE_X + 4; x < WORLD_HALF_X - 8; x += 12) {
+        if (x + 6 > roadEndX) continue;
         if (Math.abs(x + 2) < ROAD_HALF + 10) continue;
         if (SIDE_ROADS.some((sx) => Math.abs(x + 2 - sx) < roadHalfFor(sx) + 10)) continue;
         box(0xe8e2cf, 0.95, 4.0, 0.012, 0.14, x + 2, 0.013, cz + laneOffset);
       }
     }
     for (const edgeZ of [cz - CROSS_HALF + 0.5, cz + CROSS_HALF - 0.5]) {
-      for (const [x0, x1] of edgeXSegments) {
+      for (const [rawStart, rawEnd] of edgeXSegments) {
+        const x0 = rawStart;
+        const x1 = Math.min(rawEnd, roadEndX);
+        if (x1 - x0 <= 1) continue;
         box(0xe8e2cf, 0.95, x1 - x0, 0.012, 0.16, (x0 + x1) / 2, 0.013, edgeZ);
       }
     }
@@ -2425,7 +2458,10 @@ export function createCity(): City {
     if (WORLD_HALF_X - start > 1) xSegments.push([start, WORLD_HALF_X]);
   }
   for (const cz of CROSS_ZS) {
-    for (const [x0, x1] of xSegments) {
+    const roadEndX = crossStreetEndX(cz);
+    for (const [segStart, segEnd] of xSegments) {
+      const x0 = segStart;
+      const x1 = Math.min(segEnd, roadEndX);
       const len = x1 - x0;
       if (len <= 1) continue;
       const cx = (x0 + x1) / 2;
@@ -2434,7 +2470,8 @@ export function createCity(): City {
       const sidewalkSegments: Array<[number, number]> = [];
       if (x0 < bridgeStart) sidewalkSegments.push([x0, Math.min(x1, bridgeStart)]);
       if (x1 > bridgeEnd) sidewalkSegments.push([Math.max(x0, bridgeEnd), x1]);
-      for (const [sidewalkStart, sidewalkEnd] of sidewalkSegments) {
+      for (const [sidewalkStart, rawSidewalkEnd] of sidewalkSegments) {
+        const sidewalkEnd = Math.min(rawSidewalkEnd, roadEndX);
         const sidewalkLen = sidewalkEnd - sidewalkStart;
         if (sidewalkLen <= 1) continue;
         const sidewalkCx = (sidewalkStart + sidewalkEnd) / 2;
@@ -3135,6 +3172,15 @@ export function createCity(): City {
         const height = minHeight + rnd() * (maxHeight - minHeight);
         const x = side * (baseX + width / 2 + rnd() * 1.4);
         const centreZ = z + depth / 2;
+        // Keep the airport apron and its fence line clear of street blocks.
+        if (
+          inAirportGrounds(x, centreZ) ||
+          inAirportGrounds(x - width / 2, centreZ) ||
+          inAirportGrounds(x + width / 2, centreZ)
+        ) {
+          z += depth + gap;
+          continue;
+        }
         if (RAIL_STATIONS.some(
           (station) =>
             Math.abs(x - station.accessX) < width / 2 + 2 &&
@@ -3414,22 +3460,26 @@ export function createCity(): City {
         }
         const depth = 7 + rnd() * 4;
         const height = 5 + rnd() * 14;
-        addBuilding(
-          colliders,
-          buildings,
-          centre,
-          cz + side * (CROSS_HALF + 4 + depth / 2),
-          {
-            width,
-            depth,
-            height,
-            color: palette[Math.floor(rnd() * palette.length)],
-            trim: trims[Math.floor(rnd() * trims.length)],
-            side: 0,
-            style: pickStyle()
-          },
-          rnd
-        );
+        const centreZ = cz + side * (CROSS_HALF + 4 + depth / 2);
+        // Blocks that would land on the airport apron are simply not built.
+        if (!inAirportGrounds(centre, centreZ)) {
+          addBuilding(
+            colliders,
+            buildings,
+            centre,
+            centreZ,
+            {
+              width,
+              depth,
+              height,
+              color: palette[Math.floor(rnd() * palette.length)],
+              trim: trims[Math.floor(rnd() * trims.length)],
+              side: 0,
+              style: pickStyle()
+            },
+            rnd
+          );
+        }
         x += width + 2 + rnd() * 2;
       }
     }
@@ -3476,7 +3526,8 @@ export function createCity(): City {
       isRiverAt(x, z) ||
       nearBuilding(x, z, 2.5) ||
       inLandmarkFootprint(x, z) ||
-      inWestSite(x, z)
+      inWestSite(x, z) ||
+      inAirportGrounds(x, z)
     ) continue;
     addPalm(colliders, x, z, rnd, 0);
   }
@@ -3888,9 +3939,10 @@ export function createCity(): City {
   }
 
   // Cross streets stop at the desert on the east and at the west shoreline.
+  // The arm that ends at the airport fence gets its barrier there instead.
   for (const cz of CROSS_ZS) {
     if (Math.abs(cz - DESERT_HIGHWAY_Z) > 0.5) {
-      addRoadEnd(WORLD_HALF_X - 4, cz, 'z', -Math.PI / 2, CROSS_HALF);
+      addRoadEnd(crossStreetEndX(cz) - 4, cz, 'z', -Math.PI / 2, CROSS_HALF);
     }
     addRoadEnd(WEST_DISTRICT_MIN_X + 4, cz, 'z', Math.PI / 2, CROSS_HALF);
   }
@@ -3928,6 +3980,123 @@ export function createCity(): City {
   addRoadEnd(CAUSEWAY_X, half - 4, 'x', Math.PI, CAUSEWAY_HALF_W, CAUSEWAY_DECK_Y, 0.9);
   addRoadEnd(CAUSEWAY_X, -half + 4, 'x', 0, CAUSEWAY_HALF_W, CAUSEWAY_DECK_Y, 0.9);
 
+  // ------------------------------------------------------------------ airport
+  // A really big international airport on the east coast, enclosed by a
+  // round perimeter fence. Runway, terminal, control tower and hangars.
+  {
+    const apx = 560;
+    const apz = -200;
+    const apr = 100;
+    const fenceY = 2.6;
+    const fenceSegs = 72;
+
+    box(0x9aa0a6, 0.9, apr * 2, 0.15, apr * 2, apx, -0.02, apz, { cast: false });
+    contactShadow(apr * 2 + 4, apr * 2 + 4, apx, apz, 0.02);
+
+    for (let i = 0; i < fenceSegs; i += 1) {
+      const a0 = (i / fenceSegs) * Math.PI * 2;
+      const a1 = ((i + 1) / fenceSegs) * Math.PI * 2;
+      const x0 = apx + Math.cos(a0) * apr;
+      const z0 = apz + Math.sin(a0) * apr;
+      const x1 = apx + Math.cos(a1) * apr;
+      const z1 = apz + Math.sin(a1) * apr;
+      const cx = (x0 + x1) / 2;
+      const cz = (z0 + z1) / 2;
+      const len = Math.hypot(x1 - x0, z1 - z0);
+      const yaw = Math.atan2(z1 - z0, x1 - x0);
+      box(0x3d444a, 0.9, len, fenceY, 0.14, cx, fenceY / 2, cz, { ry: yaw });
+      box(0x2b2d30, 0.9, len, 0.16, 0.14, cx, fenceY + 0.16, cz, { ry: yaw });
+      colliders.push({
+        minX: Math.min(x0, x1) - 1,
+        maxX: Math.max(x0, x1) + 1,
+        minZ: Math.min(z0, z1) - 1,
+        maxZ: Math.max(z0, z1) + 1
+      });
+    }
+
+    const gateAngles = [0, Math.PI / 2, Math.PI, 3 * Math.PI / 2];
+    for (const ga of gateAngles) {
+      const gx = apx + Math.cos(ga) * (apr - 3);
+      const gz = apz + Math.sin(ga) * (apr - 3);
+      box(0x4a525a, 0.9, 6, fenceY, 0.3, gx, fenceY / 2, gz, { ry: ga });
+      box(0x4a525a, 0.9, 6, 0.16, 0.3, gx, fenceY + 0.16, gz, { ry: ga });
+    }
+
+    const rwLen = 220;
+    const rwW = 42;
+    box(0x6d6557, 0.9, rwW, 0.2, rwLen, apx, 0.1, apz, { cast: false });
+    box(0x4a525a, 0.9, rwW + 4, 0.12, rwLen + 4, apx, 0.08, apz, { cast: false });
+    for (let i = -rwLen / 2 + 12; i < rwLen / 2; i += 16) {
+      box(0xf0e6cf, 0.9, 2.6, 0.08, 8, apx, 0.16, apz + i, { cast: false });
+    }
+    for (let i = -rwLen / 2 + 12; i < rwLen / 2; i += 14) {
+      for (const side of [-1, 1]) {
+        box(0xfff1c4, 0.4, 0.2, 0.2, 0.2, apx + side * (rwW / 2 + 1.4), 0.38, apz + i, {
+          cast: false
+        });
+      }
+    }
+    colliders.push({
+      minX: apx - rwW / 2 - 2,
+      maxX: apx + rwW / 2 + 2,
+      minZ: apz - rwLen / 2 - 2,
+      maxZ: apz + rwLen / 2 + 2
+    });
+
+    box(0x6d6557, 0.9, 20, 0.18, 110, apx - 55, 0.12, apz - 30, { cast: false });
+    box(0x6d6557, 0.9, 20, 0.18, 110, apx + 55, 0.12, apz + 30, { cast: false });
+
+    {
+      const tw = 48, td = 30, th = 13;
+      const tx = apx - 30;
+      const tz = apz + 10;
+      addBuilding(colliders, buildings, tx, tz, {
+        width: tw, depth: td, height: th,
+        color: 0xd8c9a8, trim: 0x8a6f3d, side: 0, style: 1
+      }, () => 0.5);
+      addSign(group, 'INTERNATIONAL TERMINAL', '#1a2744', '#f0d878', tx, th - 1.8, tz, 0, 11);
+      for (let i = 0; i < 3; i += 1) {
+        const jz = tz - 10 + i * 10;
+        box(0x5a6b78, 0.9, 3.6, 3.2, 24, tx - tw / 2 - 12, 4.6, jz, { ry: -Math.PI / 2 });
+        box(0x3d444a, 0.9, 4, 0.18, 26, tx - tw / 2 - 13.2, 4.5, jz, { ry: -Math.PI / 2, cast: false });
+      }
+    }
+
+    {
+      const tw = 10, th = 22;
+      box(0xb8c4d0, 0.9, tw, th, tw, apx + 22, th / 2, apz - 42);
+      box(0x6d6557, 0.9, tw + 2, 0.4, tw + 2, apx + 22, th + 0.2, apz - 42);
+      box(0xa8b4c0, 0.6, tw + 3, 2.6, tw + 3, apx + 22, th + 1.4, apz - 42);
+      colliders.push({
+        minX: apx + 22 - tw / 2 - 1, maxX: apx + 22 + tw / 2 + 1,
+        minZ: apz - 42 - tw / 2 - 1, maxZ: apz - 42 + tw / 2 + 1
+      });
+    }
+
+    {
+      const hw = 26, hd = 18, hh = 9;
+      for (const hx of [apx + 40, apx + 76]) {
+        box(0x9a917f, 0.9, hw, hh, hd, hx, hh / 2, apz + 62, { rx: 0 });
+        box(0x7f7767, 0.9, hw, 0.3, hd, hx, hh - 0.15, apz + 62);
+        box(0x2b2d30, 0.8, 0.12, 6, 13, hx + hw / 2 - 0.06, hh / 2, apz + 62);
+        colliders.push({
+          minX: hx - hw / 2, maxX: hx + hw / 2,
+          minZ: apz + 62 - hd / 2, maxZ: apz + 62 + hd / 2
+        });
+      }
+    }
+
+    for (let i = 0; i < 4; i += 1) {
+      const gx = apx - 18 + i * 9;
+      const gz = apz + 42;
+      box(0xd4a12f, 0.9, 2.8, 1.8, 4.6, gx, 1, gz);
+      box(0x3b4146, 0.9, 2.4, 0.7, 4.2, gx, 1.35, gz);
+      colliders.push({ minX: gx - 1.5, maxX: gx + 1.5, minZ: gz - 2.4, maxZ: gz + 2.4 });
+    }
+
+    addSign(group, '9JA INTERNATIONAL AIRPORT', '#1b2a33', '#ffd24a', apx - 130, fenceY + 1.4, apz - 130, 0, 13);
+  }
+
   flushBatches(group);
   const nightLights = buildCityNightLights(group);
 
@@ -3952,6 +4121,7 @@ export function createCity(): City {
     { name: 'Hotoro East', x: 430, z: 300, radius: 110 },
     { name: 'Rijiyar Lemo', x: 420, z: -300, radius: 120 },
     { name: 'Kurna Asabe', x: 470, z: 140, radius: 100 },
+    { name: 'Airport City', x: 560, z: -200, radius: 120 },
     { name: 'Kofar Wambai West', x: -510, z: 0, radius: 125 },
     { name: 'Sahara Highway', x: 900, z: DESERT_HIGHWAY_Z, radius: 360 }
   ];
@@ -4009,9 +4179,13 @@ export function createCity(): City {
       ) {
         return OCEAN_SURFACE_Y;
       }
-      // Ocean beyond the city ground edge.
+      // Ocean beyond the city ground edge, but never across the airport.
       const d = Math.max(Math.abs(x), Math.abs(z));
-      if (d > WORLD_HALF_X + 140 && d < OCEAN_EDGE) return OCEAN_SURFACE_Y;
+      if (
+        d > WORLD_HALF_X + 140 &&
+        d < OCEAN_EDGE &&
+        !inAirportGrounds(x, z)
+      ) return OCEAN_SURFACE_Y;
       return null;
     },
     update: (dt: number) => {
@@ -4083,9 +4257,14 @@ export function createCity(): City {
           ? SIDEWALK_TOP
           : OCEAN_SURFACE_Y;
       }
-      // Ocean: water surface for swimming beyond the ground edge.
+      // Ocean: water surface for swimming beyond the ground edge. The airport
+      // apron is dry land even though it sits past the nominal world edge.
       const d = Math.max(Math.abs(x), Math.abs(z));
-      if (d > WORLD_HALF_X + 140 && d < OCEAN_EDGE) return OCEAN_SURFACE_Y;
+      if (
+        d > WORLD_HALF_X + 140 &&
+        d < OCEAN_EDGE &&
+        !inAirportGrounds(x, z)
+      ) return OCEAN_SURFACE_Y;
       return SIDEWALK_TOP;
     },
     deckHeightAt: bridgeDeckYAt,
