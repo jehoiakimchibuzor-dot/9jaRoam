@@ -128,6 +128,8 @@ export interface City {
   crossZs: number[];
   sideRoads: number[];
   airportGate?: AirportGate;
+  radarGroup?: THREE.Group;
+  windsockGroup?: THREE.Group;
   /** The Kano river cutting the east side of the map. Null-safe bounds set. */
   river: { minX: number; maxX: number; minZ: number; maxZ: number; surfaceY: number };
   /** Water surface height at a point, or null when on dry land. */
@@ -624,6 +626,32 @@ function box(
     0,
     color
   );
+}
+
+function addEmissiveLight(
+  parent: THREE.Group,
+  w: number,
+  h: number,
+  d: number,
+  color: number,
+  emissiveColor: number,
+  intensity: number,
+  x: number,
+  y: number,
+  z: number
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, d),
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: emissiveColor,
+      emissiveIntensity: intensity,
+      roughness: 0.3
+    })
+  );
+  mesh.position.set(x, y, z);
+  parent.add(mesh);
+  return mesh;
 }
 
 function cylinder(
@@ -4001,7 +4029,10 @@ export function createCity(): City {
 
   // ------------------------------------------------------------------ airport
   // A really big international airport on the east coast, enclosed by a
-  // round perimeter fence. Runway, terminal, control tower and hangars.
+  // round perimeter fence. Runway, terminal, control tower, hangars & fuel depot.
+  const radarGroup = new THREE.Group();
+  const windsockGroup = new THREE.Group();
+
   {
     const apx = 560;
     const apz = -200;
@@ -4041,20 +4072,36 @@ export function createCity(): City {
       box(0x4a525a, 0.9, 6, 0.16, 0.3, gx, fenceY + 0.16, gz, { ry: ga });
     }
 
+    // ------------------------------------------------------------------ Runway & Markings
     const rwLen = 220;
     const rwW = 42;
-    box(0x6d6557, 0.9, rwW, 0.2, rwLen, apx, 0.1, apz, { cast: false });
-    box(0x4a525a, 0.9, rwW + 4, 0.12, rwLen + 4, apx, 0.08, apz, { cast: false });
-    for (let i = -rwLen / 2 + 12; i < rwLen / 2; i += 16) {
+    box(0x45484d, 0.9, rwW, 0.2, rwLen, apx, 0.1, apz, { cast: false });
+    box(0x33363a, 0.9, rwW + 4, 0.12, rwLen + 4, apx, 0.08, apz, { cast: false });
+
+    // Centerline dashes
+    for (let i = -rwLen / 2 + 16; i < rwLen / 2 - 16; i += 16) {
       box(0xf0e6cf, 0.9, 2.6, 0.08, 8, apx, 0.16, apz + i, { cast: false });
     }
-    for (let i = -rwLen / 2 + 12; i < rwLen / 2; i += 14) {
+
+    // Threshold edge lights
+    for (let i = -rwLen / 2 + 8; i <= rwLen / 2 - 8; i += 14) {
       for (const side of [-1, 1]) {
-        box(0xfff1c4, 0.4, 0.2, 0.2, 0.2, apx + side * (rwW / 2 + 1.4), 0.38, apz + i, {
-          cast: false
-        });
+        box(0xfff1c4, 0.4, 0.2, 0.2, 0.2, apx + side * (rwW / 2 + 1.4), 0.38, apz + i, { cast: false });
       }
     }
+
+    // Runway end threshold bars ("09" & "27")
+    for (const tZ of [-rwLen / 2 + 14, rwLen / 2 - 14]) {
+      for (let s = -14; s <= 14; s += 4) {
+        box(0xffffff, 0.9, 1.8, 0.05, 10, apx + s, 0.17, apz + tZ, { cast: false });
+      }
+    }
+    // "09" & "27" designation markings
+    box(0xffffff, 0.9, 6, 0.05, 1.6, apx - 8, 0.18, apz - rwLen / 2 + 32, { cast: false });
+    box(0xffffff, 0.9, 1.6, 0.05, 8, apx - 10, 0.18, apz - rwLen / 2 + 32, { cast: false });
+    box(0xffffff, 0.9, 1.6, 0.05, 8, apx - 6, 0.18, apz - rwLen / 2 + 32, { cast: false });
+    box(0xffffff, 0.9, 6, 0.05, 1.6, apx + 8, 0.18, apz - rwLen / 2 + 32, { cast: false });
+
     colliders.push({
       minX: apx - rwW / 2 - 2,
       maxX: apx + rwW / 2 + 2,
@@ -4062,49 +4109,180 @@ export function createCity(): City {
       maxZ: apz + rwLen / 2 + 2
     });
 
+    // ------------------------------------------------------------------ Taxiway Guidance Paths
     box(0x6d6557, 0.9, 20, 0.18, 110, apx - 55, 0.12, apz - 30, { cast: false });
     box(0x6d6557, 0.9, 20, 0.18, 110, apx + 55, 0.12, apz + 30, { cast: false });
 
+    box(0xf5cd2e, 0.9, 1.2, 0.04, 110, apx - 55, 0.17, apz - 30, { cast: false });
+    box(0xf5cd2e, 0.9, 1.2, 0.04, 110, apx + 55, 0.17, apz + 30, { cast: false });
+    box(0xf5cd2e, 0.9, 90, 0.04, 1.2, apx, 0.17, apz, { cast: false });
+
+    // ------------------------------------------------------------------ Upgraded International Terminal
     {
-      const tw = 48, td = 30, th = 13;
-      const tx = apx - 30;
+      const tw = 64, td = 36, th = 16;
+      const tx = apx - 35;
       const tz = apz + 10;
+
+      // Base terminal concourse
       addBuilding(colliders, buildings, tx, tz, {
         width: tw, depth: td, height: th,
-        color: 0xd8c9a8, trim: 0x8a6f3d, side: 0, style: 1
+        color: 0x2c3540, trim: 0x5c728a, side: 0, style: 1
       }, () => 0.5);
-      addSign(group, 'INTERNATIONAL TERMINAL', '#1a2744', '#f0d878', tx, th - 1.8, tz, 0, 11);
-      for (let i = 0; i < 3; i += 1) {
-        const jz = tz - 10 + i * 10;
-        box(0x5a6b78, 0.9, 3.6, 3.2, 24, tx - tw / 2 - 12, 4.6, jz, { ry: -Math.PI / 2 });
-        box(0x3d444a, 0.9, 4, 0.18, 26, tx - tw / 2 - 13.2, 4.5, jz, { ry: -Math.PI / 2, cast: false });
+
+      // Glass Curtain Facade (Front facing apron)
+      box(0x3a7bd5, 0.2, tw - 4, th - 2, 0.6, tx, th / 2, tz + td / 2 + 0.3);
+      for (let m = -tw / 2 + 6; m <= tw / 2 - 6; m += 8) {
+        box(0x1a232a, 0.8, 0.4, th, 0.8, tx + m, th / 2, tz + td / 2 + 0.4);
       }
+
+      // Aerodynamic sweeping roof wing canopy
+      box(0xdedede, 0.7, tw + 8, 1.2, td + 10, tx, th + 0.6, tz);
+      box(0x1a232a, 0.9, tw + 4, 0.4, td + 6, tx, th + 1.2, tz);
+
+      // Departures Elevated Drop-off Flyover Ramp
+      box(0x4d5258, 0.9, 86, 0.4, 16, tx + 15, 5.5, tz + td / 2 + 14);
+      box(0x3d4248, 0.9, 86, 5.5, 0.4, tx + 15, 2.75, tz + td / 2 + 22);
+      for (let p = -30; p <= 40; p += 20) {
+        box(0x8a929a, 0.8, 2.4, 5.5, 2.4, tx + 15 + p, 2.75, tz + td / 2 + 14);
+      }
+
+      // Signs & Flight Schedule Board
+      addSign(group, '9JA INTERNATIONAL TERMINAL', '#0d1b2a', '#ffd24a', tx, th - 1.8, tz + td / 2 + 0.8, 0, 13);
+      addSign(group, 'DEPARTURES ➔ LEVEL 2', '#1b263b', '#48cae4', tx + 15, 7.2, tz + td / 2 + 22, 0, 9);
+      addSign(group, 'FLIGHTS: ABUJA [BOARDING]  |  LONDON [ON TIME]', '#0a192f', '#00f5d4', tx, 3.2, tz + td / 2 + 0.8, 0, 12);
+
+      // 3D Telescopic Boarding Jetways
+      for (let i = 0; i < 3; i += 1) {
+        const jz = tz - 12 + i * 12;
+        const jx = tx - tw / 2 - 14;
+        box(0x5a6b78, 0.8, 24, 3.8, 3.8, jx, 4.8, jz, { ry: -Math.PI / 2 });
+        box(0x7fb3d5, 0.3, 22, 1.2, 4.0, jx, 5.2, jz, { ry: -Math.PI / 2, cast: false });
+        box(0x1a1a1a, 0.9, 2.8, 4.2, 4.2, jx - 11, 4.8, jz);
+        box(0xd8e2dc, 0.8, 4.8, 4.2, 5.2, jx - 14, 4.8, jz);
+        box(0x2b2d30, 0.9, 0.6, 4.8, 0.6, jx - 8, 2.4, jz - 1.6);
+        box(0x2b2d30, 0.9, 0.6, 4.8, 0.6, jx - 8, 2.4, jz + 1.6);
+        box(0x111111, 0.9, 1.4, 1.4, 0.6, jx - 8, 0.7, jz - 1.8);
+        box(0x111111, 0.9, 1.4, 1.4, 0.6, jx - 8, 0.7, jz + 1.8);
+      }
+
+      // Roof HVAC units & hazard beacon
+      box(0x707a82, 0.8, 6, 2.2, 4, tx - 12, th + 2.1, tz - 4);
+      box(0x707a82, 0.8, 5, 2.2, 4, tx + 12, th + 2.1, tz + 4);
+      box(0xf0f0f0, 0.7, 3.6, 3.6, 3.6, tx + 18, th + 2.8, tz - 6);
+      addEmissiveLight(group, 0.3, 0.8, 0.3, 0xff1100, 0xff0000, 3.0, tx, th + 3.0, tz);
     }
 
+    // ------------------------------------------------------------------ 360° Control Tower with Rotating Radar
     {
-      const tw = 10, th = 22;
-      box(0xb8c4d0, 0.9, tw, th, tw, apx + 22, th / 2, apz - 42);
-      box(0x6d6557, 0.9, tw + 2, 0.4, tw + 2, apx + 22, th + 0.2, apz - 42);
-      box(0xa8b4c0, 0.6, tw + 3, 2.6, tw + 3, apx + 22, th + 1.4, apz - 42);
+      const tw = 12, th = 34;
+      const tX = apx + 22, tZ = apz - 42;
+
+      box(0xcdd6df, 0.8, tw, th, tw, tX, th / 2, tZ);
+      box(0x7b8895, 0.9, tw + 2, th - 4, 1.2, tX, (th - 4) / 2, tZ);
+      box(0x7b8895, 0.9, 1.2, th - 4, tw + 2, tX, (th - 4) / 2, tZ);
+
+      box(0x5a6b78, 0.8, tw + 6, 0.6, tw + 6, tX, th + 0.3, tZ);
+      box(0x1b3040, 0.3, tw + 5.2, 4.6, tw + 5.2, tX, th + 2.6, tZ);
+      box(0xd8e2dc, 0.8, tw + 6.2, 0.6, tw + 6.2, tX, th + 5.2, tZ);
+
       colliders.push({
-        minX: apx + 22 - tw / 2 - 1, maxX: apx + 22 + tw / 2 + 1,
-        minZ: apz - 42 - tw / 2 - 1, maxZ: apz - 42 + tw / 2 + 1
+        minX: tX - tw / 2 - 1, maxX: tX + tw / 2 + 1,
+        minZ: tZ - tw / 2 - 1, maxZ: tZ + tw / 2 + 1
       });
+
+      // Rotating Radar Dish Assembly on tower roof
+      radarGroup.position.set(tX, th + 5.5, tZ);
+      const ped = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.6, 0.8, 1.8, 12),
+        new THREE.MeshStandardMaterial({ color: 0x3a424a, roughness: 0.5 })
+      );
+      ped.position.set(0, 0.9, 0);
+      radarGroup.add(ped);
+
+      const dish = new THREE.Mesh(
+        new THREE.BoxGeometry(6.2, 2.4, 0.3),
+        new THREE.MeshStandardMaterial({ color: 0xe0e6ed, roughness: 0.3 })
+      );
+      dish.position.set(0, 2.4, 0);
+      radarGroup.add(dish);
+
+      const horn = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.15, 0.3, 1.2, 8),
+        new THREE.MeshStandardMaterial({ color: 0xff3300, roughness: 0.4 })
+      );
+      horn.rotation.x = Math.PI / 2;
+      horn.position.set(0, 2.4, 0.8);
+      radarGroup.add(horn);
+
+      group.add(radarGroup);
+
+      // Top hazard beacon light on tower
+      addEmissiveLight(group, 0.4, 1.0, 0.4, 0xff0000, 0xff0000, 4.0, tX, th + 9.2, tZ);
+
+      // Dynamic Windsock Pole
+      windsockGroup.position.set(tX - 10, 0, tZ + 15);
+      const wsPole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.1, 0.14, 8, 8),
+        new THREE.MeshStandardMaterial({ color: 0x4a525a, roughness: 0.7 })
+      );
+      wsPole.position.set(0, 4, 0);
+      windsockGroup.add(wsPole);
+
+      const wsSock = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.5, 0.2, 2.4, 12),
+        new THREE.MeshStandardMaterial({ color: 0xff4400, roughness: 0.5 })
+      );
+      wsSock.rotation.z = Math.PI / 2;
+      wsSock.position.set(1.2, 7.8, 0);
+      windsockGroup.add(wsSock);
+
+      group.add(windsockGroup);
     }
 
+    // ------------------------------------------------------------------ Arch-Roof Hangars & Aviation Fuel Depot
     {
-      const hw = 26, hd = 18, hh = 9;
+      const hw = 28, hd = 22, hh = 11;
       for (const hx of [apx + 40, apx + 76]) {
-        box(0x9a917f, 0.9, hw, hh, hd, hx, hh / 2, apz + 62, { rx: 0 });
-        box(0x7f7767, 0.9, hw, 0.3, hd, hx, hh - 0.15, apz + 62);
-        box(0x2b2d30, 0.8, 0.12, 6, 13, hx + hw / 2 - 0.06, hh / 2, apz + 62);
+        box(0x8a929a, 0.7, hw, hh, hd, hx, hh / 2, apz + 62);
+        box(0x4a525a, 0.9, hw + 1, 0.6, hd + 1, hx, hh + 0.3, apz + 62);
+        box(0x1a1c1e, 0.9, hw - 4, hh - 2, 0.2, hx, (hh - 2) / 2, apz + 62 - hd / 2 + 0.1, { cast: false });
+        box(0xd4a12f, 0.8, 3.2, 1.4, 1.8, hx - 6, 0.7, apz + 62);
+        box(0x3a424a, 0.8, 2.2, 2.2, 2.2, hx + 6, 1.1, apz + 62);
+
         colliders.push({
           minX: hx - hw / 2, maxX: hx + hw / 2,
           minZ: apz + 62 - hd / 2, maxZ: apz + 62 + hd / 2
         });
       }
+
+      // Aviation Fuel Depot
+      const fX = apx + 105, fZ = apz + 55;
+      box(0x9aa0a6, 0.9, 24, 1.4, 20, fX, 0.7, fZ);
+      box(0x2b2d30, 0.9, 22, 1.2, 18, fX, 0.8, fZ, { cast: false });
+      for (const tOff of [-5.5, 5.5]) {
+        const fuelTank = new THREE.Mesh(
+          new THREE.CylinderGeometry(4.2, 4.2, 7.5, 20),
+          new THREE.MeshStandardMaterial({ color: 0xd0d5dd, roughness: 0.4 })
+        );
+        fuelTank.position.set(fX + tOff, 4.5, fZ);
+        group.add(fuelTank);
+
+        const stripe = new THREE.Mesh(
+          new THREE.CylinderGeometry(4.25, 4.25, 1.2, 20),
+          new THREE.MeshStandardMaterial({ color: 0xf5cd2e, roughness: 0.5 })
+        );
+        stripe.position.set(fX + tOff, 5.2, fZ);
+        group.add(stripe);
+      }
+      addSign(group, 'JET-A & AVGAS FUEL DEPOT', '#b7094c', '#ffffff', fX, 8.5, fZ + 10, 0, 8);
+      colliders.push({ minX: fX - 12, maxX: fX + 12, minZ: fZ - 10, maxZ: fZ + 10 });
+
+      // Fuel Service Tanker Truck
+      box(0x005f73, 0.8, 3.2, 2.4, 3.6, fX - 16, 1.2, fZ + 4);
+      box(0xca6702, 0.7, 3.4, 2.2, 7.2, fX - 16, 1.8, fZ - 2);
     }
 
+    // Baggage carts & service tugs
     for (let i = 0; i < 4; i += 1) {
       const gx = apx - 18 + i * 9;
       const gz = apz + 42;
@@ -4128,17 +4306,29 @@ export function createCity(): City {
     // ------------------------------------------------------------------ Interactive Gate
     const gateArmGroup = new THREE.Group();
     gateArmGroup.position.set(apx - apr + 4, 1.3, apz);
-    box(gateArmGroup, 7.5, 0.16, 0.16, 0xee3322, 3.75, 0, 0);
+
+    const armMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(7.5, 0.16, 0.16),
+      new THREE.MeshStandardMaterial({ color: 0xee3322, roughness: 0.6 })
+    );
+    armMesh.position.set(3.75, 0, 0);
+    gateArmGroup.add(armMesh);
+
     for (let s = 1; s < 6; s += 2) {
-      box(gateArmGroup, 1.2, 0.18, 0.18, 0xffffea, s * 1.25, 0, 0);
+      const stripe = new THREE.Mesh(
+        new THREE.BoxGeometry(1.2, 0.18, 0.18),
+        new THREE.MeshStandardMaterial({ color: 0xffffea, roughness: 0.6 })
+      );
+      stripe.position.set(s * 1.25, 0, 0);
+      gateArmGroup.add(stripe);
     }
     group.add(gateArmGroup);
 
     box(0x3a424a, 0.9, 2.8, 2.6, 3.2, apx - apr + 1.2, 1.3, apz - 3.8);
     box(0xd8c8a8, 0.9, 3.0, 0.3, 3.4, apx - apr + 1.2, 2.75, apz - 3.8);
 
-    const signalRed = emissive(group, 0.2, 0.2, 0.15, 0xff2222, 0xff0000, 2.0, apx - apr + 3.8, 2.2, apz - 0.2);
-    const signalGreen = emissive(group, 0.2, 0.2, 0.15, 0x22ff44, 0x00ff44, 0.5, apx - apr + 3.8, 1.9, apz - 0.2);
+    const signalRed = addEmissiveLight(group, 0.2, 0.2, 0.15, 0xff2222, 0xff0000, 2.0, apx - apr + 3.8, 2.2, apz - 0.2);
+    const signalGreen = addEmissiveLight(group, 0.2, 0.2, 0.15, 0x22ff44, 0x00ff44, 0.5, apx - apr + 3.8, 1.9, apz - 0.2);
 
     let gateAngle = 0;
     let gateOpen = false;
@@ -4225,6 +4415,8 @@ export function createCity(): City {
     crossZs: CROSS_ZS,
     sideRoads: SIDE_ROADS,
     airportGate,
+    radarGroup,
+    windsockGroup,
     river: {
       minX: RIVER_MIN_X,
       maxX: RIVER_MAX_X,
@@ -4270,6 +4462,8 @@ export function createCity(): City {
       waterTexture.offset.x += dt * 0.0025;
       oceanTexture.offset.y -= dt * 0.006;
       oceanTexture.offset.x += dt * 0.0022;
+      if (radarGroup) radarGroup.rotation.y += dt * 1.5;
+      if (windsockGroup) windsockGroup.rotation.z = Math.sin(Date.now() * 0.003) * 0.08;
       for (const boat of oceanBoats) {
         let x = boat.group.position.x + boat.speed * dt * boat.dir;
         if (x > boat.maxX) x = boat.minX;

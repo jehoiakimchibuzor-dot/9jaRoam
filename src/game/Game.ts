@@ -471,7 +471,7 @@ export class Game {
 
     // Spawn Airport Aircraft Rigs
     const jet = createShamalJet(0x1e3a60);
-    jet.group.position.set(520, 0.1, -180);
+    jet.group.position.set(480, 0.1, -190);
     jet.group.rotation.y = Math.PI / 2;
     ensureRigHealth(jet);
     jet.group.userData.saveId = 'airport-shamal-jet';
@@ -1425,7 +1425,7 @@ export class Game {
     }
   }
 
-  private updateFlight(dt: number, a: boolean, b: boolean, e: boolean, f: boolean, r: boolean): void {
+  private updateFlight(dt: number, _a: boolean, b: boolean, _e: boolean, _f: boolean, _r: boolean): void {
     const aircraft = this.activeVehicle;
     if (!aircraft) {
       this.recoverOnFoot();
