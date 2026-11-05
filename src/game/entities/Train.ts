@@ -57,6 +57,10 @@ export class TrainService {
       { group: this.makeTrain(), direction: -1, z: RAIL_END - 84, speed: 13 }
     );
     for (const train of this.trains) scene.add(train.group);
+    // Place every train on its rails immediately. Without this they sit at the
+    // world origin (on the boulevard) for as long as Game.update() skips
+    // trains.update() — e.g. while a menu, map or death screen is open.
+    this.update(0);
   }
 
   update(dt: number): void {

@@ -2956,11 +2956,18 @@ export function createCity(): City {
     const floor = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.08, 5.25), mat(0x8a6b45, 0.8));
     floor.position.y = -0.02;
     g.add(floor);
+    // Boat parts must be children of the boat group. The batched box() helper
+    // writes world-space matrices, which dropped planks and rails at the world
+    // origin (blocking the boulevard) every time a boat was built.
     for (const side of [-1, 1]) {
-      box(0xe6dfcc, 0.65, 0.12, 0.12, 5.2, side * 1.05, 0.23, -0.05, { cast: false });
-      for (const z of [-2.2, -0.8, 0.7, 2.05]) {
-        box(0x8a6b45, 0.85, 1.75, 0.1, 0.34, 0, 0.24, z);
-      }
+      const gunwale = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 5.2), mat(0xe6dfcc, 0.65));
+      gunwale.position.set(side * 1.05, 0.23, -0.05);
+      g.add(gunwale);
+    }
+    for (const z of [-2.2, -0.8, 0.7, 2.05]) {
+      const plank = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.1, 0.34), mat(0x8a6b45, 0.85));
+      plank.position.set(0, 0.24, z);
+      g.add(plank);
     }
     if (canopy !== 0) {
       for (const [px, pz] of [[-0.9, -2.2], [0.9, -2.2], [-0.9, 2.2], [0.9, 2.2]]) {
@@ -2985,7 +2992,9 @@ export function createCity(): City {
       roof.position.set(0, 1.03, -0.15);
       g.add(roof);
       for (const side of [-1, 1]) {
-        box(0xf0d889, 0.4, 1.1, 0.12, 0.04, side * 0.54, 1.14, 2.25, { cast: false });
+        const lamp = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.12, 0.04), mat(0xf0d889, 0.4));
+        lamp.position.set(side * 0.54, 1.14, 2.25);
+        g.add(lamp);
       }
     }
     const motor = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.42, 0.4), mat(0x24262a, 0.6));
