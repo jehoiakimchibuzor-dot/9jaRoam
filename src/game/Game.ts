@@ -13,8 +13,11 @@ import {
   createBike,
   createDanfo,
   createKeke,
+  createMaverickHelicopter,
   createSedan,
+  createShamalJet,
   createSportCar,
+  createStuntPlane,
   ensureVehicleHealth as ensureRigHealth,
   setVehicleNightLighting,
   VehicleRig,
@@ -465,6 +468,34 @@ export class Game {
       if (vehicle.driver) vehicle.driver.visible = true;
       this.scene.add(vehicle.group);
     }
+
+    // Spawn Airport Aircraft Rigs
+    const jet = createShamalJet(0x1e3a60);
+    jet.group.position.set(520, 0.1, -180);
+    jet.group.rotation.y = Math.PI / 2;
+    ensureRigHealth(jet);
+    jet.group.userData.saveId = 'airport-shamal-jet';
+    if (jet.driver) jet.driver.visible = false;
+    this.scene.add(jet.group);
+    this.drivableVehicles.push(jet);
+
+    const chopper = createMaverickHelicopter(0x2d4838);
+    chopper.group.position.set(620, 0.1, -160);
+    chopper.group.rotation.y = 0;
+    ensureRigHealth(chopper);
+    chopper.group.userData.saveId = 'airport-maverick-chopper';
+    if (chopper.driver) chopper.driver.visible = false;
+    this.scene.add(chopper.group);
+    this.drivableVehicles.push(chopper);
+
+    const stuntPlane = createStuntPlane(0xd03525);
+    stuntPlane.group.position.set(590, 0.1, -140);
+    stuntPlane.group.rotation.y = -Math.PI / 2;
+    ensureRigHealth(stuntPlane);
+    stuntPlane.group.userData.saveId = 'airport-stunt-plane';
+    if (stuntPlane.driver) stuntPlane.driver.visible = false;
+    this.scene.add(stuntPlane.group);
+    this.drivableVehicles.push(stuntPlane);
 
     this.interiors = new Interiors(this.scene, this.city);
     this.trains = new TrainService(this.scene, this.city);
@@ -1044,6 +1075,17 @@ export class Game {
     this.updateImpacts(dt);
     this.planes.update(dt);
     this.city.update(dt);
+    if (this.city.airportGate) {
+      const pPos = this.mode === 'drive' && this.activeVehicle
+        ? this.activeVehicle.group.position
+        : this.player.group.position;
+      const speed = this.mode === 'drive' ? Math.abs(this.carSpeed) : 0;
+      const res = this.city.airportGate.update(dt, pPos, speed);
+      if (res.breached && this.wanted < 1) {
+        this.addWanted(1);
+        this.showToast('AIRPORT SECURITY BREACH!');
+      }
+    }
     this.trains.update(dt);
     this.updateCamera(dt);
     this.updateHud(dt);
@@ -1052,6 +1094,9 @@ export class Game {
   }
 
   private updateFoot(dt: number, a: boolean, b: boolean, c: boolean, d: boolean, e: boolean, f: boolean, r: boolean): void {
+    this.input.setButtonLabel('btn-gas', 'GAS');
+    this.input.setButtonLabel('btn-c', 'JUMP');
+    this.input.setButtonLabel('btn-d', 'CROUCH');
     const state = this.input.state;
     const mag = Math.min(1, Math.hypot(state.moveX, state.moveY));
     const axis = roadAxisForYaw(this.player.yaw);
@@ -1227,6 +1272,11 @@ export class Game {
       return;
     }
 
+    if (car.kind === 'plane' || car.kind === 'helicopter') {
+      this.updateFlight(dt, a, b, e, f, r);
+      return;
+    }
+
     const isBike = car.length < 2.5;
     if (car.access) {
       this.player.group.position.copy(this.vehicleLocalToWorld(car, car.access.seat));
@@ -1372,6 +1422,134 @@ export class Game {
       } else {
         this.beginExit();
       }
+    }
+  }
+
+  private updateFlight(dt: number, a: boolean, b: boolean, e: boolean, f: boolean, r: boolean): void {
+    const aircraft = this.activeVehicle;
+    if (!aircraft) {
+      this.recoverOnFoot();
+      return;
+    }
+
+    const state = this.input.state;
+    const isChopper = aircraft.kind === 'helicopter';
+
+    if (aircraft.pitch === undefined) aircraft.pitch = 0;
+    if (aircraft.roll === undefined) aircraft.roll = 0;
+    if (aircraft.yaw === undefined) aircraft.yaw = this.carYaw;
+    if (aircraft.altitude === undefined) aircraft.altitude = 0;
+    if (aircraft.verticalSpeed === undefined) aircraft.verticalSpeed = 0;
+    if (aircraft.rotorSpeed === undefined) aircraft.rotorSpeed = 0;
+
+    const gas = state.gasHeld;
+    const reverse = state.reverseHeld;
+    const climb = state.cPressed || state.cHeld || (gas && state.moveY < -0.35);
+    const dive = state.dHeld || (reverse && state.moveY > 0.35);
+    const steerX = Math.abs(state.moveX) > 0.12 ? state.moveX : 0;
+    const pitchY = Math.abs(state.moveY) > 0.12 ? state.moveY : 0;
+
+    if (isChopper) {
+      const targetRotorSpeed = gas || climb ? 26 : 8;
+      aircraft.rotorSpeed += (targetRotorSpeed - aircraft.rotorSpeed) * Math.min(1.0, dt * 2.5);
+
+      if (aircraft.rotors) {
+        for (const rot of aircraft.rotors) rot.rotation.y += aircraft.rotorSpeed * dt;
+      }
+      if (aircraft.spinners) {
+        for (const s of aircraft.spinners) s.rotation.x += aircraft.rotorSpeed * 1.5 * dt;
+      }
+
+      const liftPower = aircraft.rotorSpeed / 26;
+      if (climb) aircraft.verticalSpeed = Math.min(14, aircraft.verticalSpeed + 12 * liftPower * dt);
+      else if (dive) aircraft.verticalSpeed = Math.max(-12, aircraft.verticalSpeed - 10 * dt);
+      else {
+        aircraft.verticalSpeed *= Math.max(0, 1 - dt * 2.2);
+      }
+
+      const targetPitch = -pitchY * 0.45;
+      const targetRoll = -steerX * 0.45;
+      aircraft.pitch += (targetPitch - aircraft.pitch) * Math.min(1.0, dt * 4.0);
+      aircraft.roll += (targetRoll - aircraft.roll) * Math.min(1.0, dt * 4.0);
+
+      const forwardAccel = -aircraft.pitch * 28 * liftPower;
+      this.carSpeed += (forwardAccel - this.carSpeed) * Math.min(1.0, dt * 2.0);
+      this.carYaw -= steerX * 1.6 * dt;
+
+    } else {
+      if (aircraft.propellers) {
+        for (const p of aircraft.propellers) p.rotation.z += (Math.abs(this.carSpeed) + 14) * dt;
+      }
+      if (aircraft.spinners) {
+        for (const s of aircraft.spinners) s.rotation.x += (this.carSpeed / aircraft.wheelRadius) * dt;
+      }
+
+      const maxAirSpeed = aircraft.maxSpeed ?? 42;
+      const accel = 14.0;
+      if (gas) this.carSpeed = Math.min(maxAirSpeed, this.carSpeed + accel * dt);
+      else if (reverse) this.carSpeed = Math.max(CAR_MAX_REVERSE, this.carSpeed - CAR_BRAKE * dt);
+      else {
+        const drag = (1.5 + Math.abs(this.carSpeed) * 0.04) * dt;
+        this.carSpeed = Math.abs(this.carSpeed) <= drag ? 0 : this.carSpeed - Math.sign(this.carSpeed) * drag;
+      }
+
+      const airspeed = Math.abs(this.carSpeed);
+      const isAirborne = aircraft.altitude > 0.4 || (airspeed > 12 && climb);
+
+      if (isAirborne) {
+        const targetPitch = dive ? 0.42 : climb ? -0.42 : -pitchY * 0.45;
+        const targetRoll = -steerX * 0.55;
+        aircraft.pitch += (targetPitch - aircraft.pitch) * Math.min(1.0, dt * 3.5);
+        aircraft.roll += (targetRoll - aircraft.roll) * Math.min(1.0, dt * 3.5);
+
+        const bankYaw = -aircraft.roll * 1.2;
+        this.carYaw += bankYaw * dt;
+
+        const lift = (airspeed / 20) * Math.cos(aircraft.roll);
+        const climbFactor = -Math.sin(aircraft.pitch) * airspeed;
+        aircraft.verticalSpeed = climbFactor + (lift - 1.0) * 8;
+      } else {
+        aircraft.pitch += (0 - aircraft.pitch) * Math.min(1.0, dt * 6.0);
+        aircraft.roll += (0 - aircraft.roll) * Math.min(1.0, dt * 6.0);
+        aircraft.verticalSpeed = 0;
+        this.carYaw -= steerX * 1.8 * Math.min(1, airspeed / 8) * dt;
+      }
+    }
+
+    const fwd = new THREE.Vector3(Math.sin(this.carYaw), 0, Math.cos(this.carYaw));
+    aircraft.group.position.addScaledVector(fwd, this.carSpeed * dt);
+
+    aircraft.altitude = Math.max(0, aircraft.altitude + aircraft.verticalSpeed * dt);
+    const groundY = this.city.groundHeightAt(aircraft.group.position.x, aircraft.group.position.z);
+
+    if (aircraft.altitude <= 0.05) {
+      aircraft.altitude = 0;
+      aircraft.verticalSpeed = 0;
+      aircraft.group.position.y = groundY;
+    } else {
+      aircraft.group.position.y = groundY + aircraft.altitude;
+    }
+
+    const euler = new THREE.Euler(aircraft.pitch, this.carYaw, aircraft.roll, 'YXZ');
+    aircraft.group.quaternion.setFromEuler(euler);
+
+    if (aircraft.access) {
+      this.player.group.position.copy(this.vehicleLocalToWorld(aircraft, aircraft.access.seat));
+      this.player.group.quaternion.copy(aircraft.group.quaternion);
+      this.player.group.visible = false;
+      if (aircraft.driver) aircraft.driver.visible = true;
+    }
+
+    const currentKmh = Math.round(Math.abs(this.carSpeed) * 3.6);
+    const currentAlt = Math.round(aircraft.altitude);
+    this.setHint(`✈️ AIRSPEED: ${currentKmh} KM/H  |  ALTITUDE: ${currentAlt} M`);
+
+    this.input.setButtonLabel('btn-gas', isChopper ? 'ROTOR' : 'THRUST');
+    this.input.setButtonLabel('btn-c', 'PITCH UP');
+    this.input.setButtonLabel('btn-d', 'PITCH DN');
+
+    if (b) {
+      this.beginExit();
     }
   }
 

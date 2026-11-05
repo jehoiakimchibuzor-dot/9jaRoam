@@ -5,6 +5,7 @@ export interface InputState {
   aPressed: boolean;
   bPressed: boolean;
   cPressed: boolean;
+  cHeld: boolean;
   dPressed: boolean;
   ePressed: boolean;
   dHeld: boolean;
@@ -31,6 +32,7 @@ export class Input {
     aPressed: false,
     bPressed: false,
     cPressed: false,
+    cHeld: false,
     dPressed: false,
     ePressed: false,
     dHeld: false,
@@ -134,6 +136,7 @@ export class Input {
       if (down) this.state.bPressed = true;
     });
     this.makeButton('btn-c', 'C', 'JUMP', (down) => {
+      this.state.cHeld = down;
       if (down) this.state.cPressed = true;
     });
     this.makeButton('btn-d', 'D', 'CROUCH', (down) => {

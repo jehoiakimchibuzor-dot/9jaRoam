@@ -96,6 +96,15 @@ export interface ParkingSpace {
   surfaceY: number;
 }
 
+export interface AirportGate {
+  group: THREE.Group;
+  armGroup: THREE.Group;
+  boothPosition: THREE.Vector3;
+  open: boolean;
+  angle: number;
+  update(dt: number, playerPos: THREE.Vector3, playerSpeed: number): { open: boolean; breached: boolean };
+}
+
 export interface City {
   group: THREE.Group;
   colliders: Collider[];
@@ -118,6 +127,7 @@ export interface City {
   parkingSpaces: ParkingSpace[];
   crossZs: number[];
   sideRoads: number[];
+  airportGate?: AirportGate;
   /** The Kano river cutting the east side of the map. Null-safe bounds set. */
   river: { minX: number; maxX: number; minZ: number; maxZ: number; surfaceY: number };
   /** Water surface height at a point, or null when on dry land. */
@@ -4104,6 +4114,63 @@ export function createCity(): City {
     }
 
     addSign(group, '9JA INTERNATIONAL AIRPORT', '#1b2a33', '#ffd24a', apx - 130, fenceY + 1.4, apz - 130, 0, 13);
+
+    // ------------------------------------------------------------------ Helipad
+    const hx = apx + 60, hz = apz + 40;
+    box(0x3a3d42, 0.9, 22, 0.15, 22, hx, 0.08, hz, { cast: false });
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
+      box(0xf5cd2e, 0.9, 1.8, 0.02, 0.4, hx + Math.cos(a) * 9, 0.16, hz + Math.sin(a) * 9, { ry: -a, cast: false });
+    }
+    box(0xf5cd2e, 0.9, 1.2, 0.02, 6.4, hx - 2.2, 0.17, hz, { cast: false });
+    box(0xf5cd2e, 0.9, 1.2, 0.02, 6.4, hx + 2.2, 0.17, hz, { cast: false });
+    box(0xf5cd2e, 0.9, 5.6, 0.02, 1.2, hx, 0.17, hz, { cast: false });
+
+    // ------------------------------------------------------------------ Interactive Gate
+    const gateArmGroup = new THREE.Group();
+    gateArmGroup.position.set(apx - apr + 4, 1.3, apz);
+    box(gateArmGroup, 7.5, 0.16, 0.16, 0xee3322, 3.75, 0, 0);
+    for (let s = 1; s < 6; s += 2) {
+      box(gateArmGroup, 1.2, 0.18, 0.18, 0xffffea, s * 1.25, 0, 0);
+    }
+    group.add(gateArmGroup);
+
+    box(0x3a424a, 0.9, 2.8, 2.6, 3.2, apx - apr + 1.2, 1.3, apz - 3.8);
+    box(0xd8c8a8, 0.9, 3.0, 0.3, 3.4, apx - apr + 1.2, 2.75, apz - 3.8);
+
+    const signalRed = emissive(group, 0.2, 0.2, 0.15, 0xff2222, 0xff0000, 2.0, apx - apr + 3.8, 2.2, apz - 0.2);
+    const signalGreen = emissive(group, 0.2, 0.2, 0.15, 0x22ff44, 0x00ff44, 0.5, apx - apr + 3.8, 1.9, apz - 0.2);
+
+    let gateAngle = 0;
+    let gateOpen = false;
+
+    var airportGate: AirportGate = {
+      group,
+      armGroup: gateArmGroup,
+      boothPosition: new THREE.Vector3(apx - apr + 4, 0, apz),
+      open: false,
+      angle: 0,
+      update: (dt: number, playerPos: THREE.Vector3, playerSpeed: number) => {
+        const dist = playerPos.distanceTo(gateArmGroup.position);
+        let breached = false;
+        if (dist < 14) {
+          gateOpen = true;
+          if (playerSpeed > 9 && dist < 5 && gateAngle > -0.3) {
+            breached = true;
+          }
+        } else if (dist > 18) {
+          gateOpen = false;
+        }
+
+        const targetAngle = gateOpen ? -Math.PI / 2.2 : 0;
+        gateAngle += (targetAngle - gateAngle) * Math.min(1.0, dt * 5.0);
+        gateArmGroup.rotation.z = gateAngle;
+
+        signalGreen.visible = gateOpen;
+        signalRed.visible = !gateOpen;
+
+        return { open: gateOpen, breached };
+      }
+    };
   }
 
   flushBatches(group);
@@ -4157,6 +4224,7 @@ export function createCity(): City {
     parkingSpaces,
     crossZs: CROSS_ZS,
     sideRoads: SIDE_ROADS,
+    airportGate,
     river: {
       minX: RIVER_MIN_X,
       maxX: RIVER_MAX_X,

@@ -32,6 +32,16 @@ export interface VehicleRig {
   wrecked?: boolean;
   fuel?: number;
   maxFuel?: number;
+  /** Aircraft specific metadata */
+  kind?: 'car' | 'bike' | 'plane' | 'helicopter';
+  propellers?: THREE.Group[];
+  rotors?: THREE.Group[];
+  rotorSpeed?: number;
+  pitch?: number;
+  roll?: number;
+  yaw?: number;
+  altitude?: number;
+  verticalSpeed?: number;
 }
 
 export interface VehicleOverlap {
@@ -1068,4 +1078,287 @@ export function createSportCar(color = 0xe03a2f): VehicleRig {
 
 export function createPoliceCar(): VehicleRig {
   return createSedan(0xe8e8e6, true);
+}
+
+export function createShamalJet(color = 0x224477): VehicleRig {
+  const group = new THREE.Group();
+  const white = 0xe8eaec;
+  const glass = glassMat(0x2a445e);
+  const wheelRadius = 0.38;
+  const length = 14.5;
+
+  const body = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.1, 1.1, 11, 14),
+    mat(white, 0.45)
+  );
+  body.rotation.x = Math.PI / 2;
+  body.position.set(0, 1.4, 0);
+  group.add(body);
+
+  const nose = new THREE.Mesh(
+    new THREE.ConeGeometry(1.1, 2.8, 14),
+    mat(white, 0.45)
+  );
+  nose.rotation.x = Math.PI / 2;
+  nose.position.set(0, 1.4, 6.9);
+  group.add(nose);
+
+  const tail = new THREE.Mesh(
+    new THREE.ConeGeometry(1.1, 3.2, 14),
+    mat(white, 0.45)
+  );
+  tail.rotation.x = -Math.PI / 2;
+  tail.position.set(0, 1.4, -7.1);
+  group.add(tail);
+
+  rbox(group, 12.0, 0.22, 2.8, 0.08, white, 0, 1.25, 0.2, 0.4);
+  for (const side of [-1, 1]) {
+    rbox(group, 0.22, 1.2, 0.8, 0.06, color, side * 5.95, 1.8, 0.2, 0.4);
+  }
+  rbox(group, 4.6, 0.18, 1.6, 0.06, white, 0, 1.5, -6.0, 0.4);
+  const fin = rbox(group, 0.24, 2.8, 2.2, 0.08, color, 0, 2.9, -6.2, 0.4);
+  fin.rotation.x = -0.18;
+
+  for (const side of [-1, 1]) {
+    const engine = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.55, 0.62, 2.4, 12),
+      mat(0x9aa0a6, 0.4, 0.3)
+    );
+    engine.rotation.x = Math.PI / 2;
+    engine.position.set(side * 1.55, 1.85, -2.2);
+    group.add(engine);
+    emissive(group, 0.9, 0.9, 0.08, 0xff7722, 0xffaa44, 2.0, side * 1.55, 1.85, -3.42);
+  }
+
+  for (const side of [-1, 1]) {
+    box(group, 0.06, 0.28, 9.5, color, side * 1.08, 1.25, 0.6);
+    box(group, 0.06, 0.38, 3.2, 0x1d2e3d, side * 1.08, 1.7, 4.2).material = glass;
+  }
+  box(group, 1.6, 0.38, 0.08, 0x1d2e3d, 0, 1.75, 5.7).material = glass;
+
+  const driver = buildDriver();
+  driver.position.set(-0.35, 1.35, 4.2);
+  group.add(driver);
+
+  const wheels = addWheels(
+    group,
+    wheelRadius,
+    [
+      [0, 5.2, true],
+      [-1.4, -0.6, false],
+      [1.4, -0.6, false]
+    ],
+    0.2
+  );
+
+  return finishVehicle({
+    group,
+    steerPivots: wheels.steerPivots,
+    spinners: wheels.spinners,
+    wheelRadius,
+    length,
+    width: 12.0,
+    centerOfMassY: 1.4,
+    maxSpeed: 42,
+    driver,
+    kind: 'plane',
+    pitch: 0,
+    roll: 0,
+    yaw: 0,
+    altitude: 0,
+    verticalSpeed: 0,
+    access: {
+      label: 'JET',
+      entry: new THREE.Vector3(-1.8, 0, 3.5),
+      seat: new THREE.Vector3(-0.35, 0, 4.2),
+      interactionRange: 4.8,
+      cameraHeight: 3.2
+    }
+  });
+}
+
+export function createMaverickHelicopter(color = 0x2b4c3f): VehicleRig {
+  const group = new THREE.Group();
+  const dark = 0x1d2024;
+  const glass = glassMat(0x3a5f7d);
+  const wheelRadius = 0.28;
+  const length = 10.5;
+
+  const cabin = new THREE.Mesh(
+    new RoundedBoxGeometry(2.1, 2.0, 3.8, 3, 0.4),
+    mat(color, 0.5)
+  );
+  cabin.position.set(0, 1.5, 0.6);
+  group.add(cabin);
+
+  const windscreen = new THREE.Mesh(
+    new RoundedBoxGeometry(1.95, 1.3, 1.6, 3, 0.3),
+    glass
+  );
+  windscreen.position.set(0, 1.6, 1.6);
+  group.add(windscreen);
+
+  const boom = new THREE.Mesh(
+    new THREE.ConeGeometry(0.55, 6.2, 10),
+    mat(color, 0.5)
+  );
+  boom.rotation.x = -Math.PI / 2;
+  boom.position.set(0, 1.7, -4.2);
+  group.add(boom);
+
+  rbox(group, 0.16, 1.6, 1.1, 0.05, 0xdd4433, 0, 2.2, -7.0, 0.4);
+
+  for (const side of [-1, 1]) {
+    box(group, 0.12, 0.12, 4.2, dark, side * 1.05, 0.22, 0.4);
+    for (const z of [-0.8, 1.2]) {
+      box(group, 0.08, 0.75, 0.08, dark, side * 1.05, 0.55, z);
+    }
+  }
+
+  const mainRotorGroup = new THREE.Group();
+  mainRotorGroup.position.set(0, 2.7, 0.4);
+  const mast = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.12, 0.14, 0.6, 10),
+    mat(0x889098, 0.3, 0.6)
+  );
+  mast.position.y = -0.3;
+  mainRotorGroup.add(mast);
+
+  rbox(mainRotorGroup, 9.6, 0.05, 0.36, 0.02, dark, 0, 0, 0, 0.3);
+  const mainRotorHub = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.4, 0.4, 0.15, 12),
+    mat(0xaaaaaa, 0.3, 0.7)
+  );
+  mainRotorGroup.add(mainRotorHub);
+  group.add(mainRotorGroup);
+
+  const tailRotorGroup = new THREE.Group();
+  tailRotorGroup.position.set(0.22, 2.2, -7.1);
+  rbox(tailRotorGroup, 0.04, 1.4, 0.18, 0.02, dark, 0, 0, 0, 0.3);
+  group.add(tailRotorGroup);
+
+  const driver = buildDriver();
+  driver.position.set(-0.45, 1.1, 0.8);
+  group.add(driver);
+
+  const dummyWheels = addWheels(
+    group,
+    wheelRadius,
+    [
+      [-1.05, 1.2, false],
+      [1.05, 1.2, false],
+      [-1.05, -0.8, false],
+      [1.05, -0.8, false]
+    ],
+    0.1
+  );
+
+  return finishVehicle({
+    group,
+    steerPivots: dummyWheels.steerPivots,
+    spinners: [tailRotorGroup],
+    rotors: [mainRotorGroup],
+    rotorSpeed: 0,
+    wheelRadius,
+    length,
+    width: 2.8,
+    centerOfMassY: 1.4,
+    maxSpeed: 32,
+    driver,
+    kind: 'helicopter',
+    pitch: 0,
+    roll: 0,
+    yaw: 0,
+    altitude: 0,
+    verticalSpeed: 0,
+    access: {
+      label: 'HELICOPTER',
+      entry: new THREE.Vector3(-1.4, 0, 0.6),
+      seat: new THREE.Vector3(-0.45, 0, 0.8),
+      interactionRange: 3.8,
+      cameraHeight: 2.8
+    }
+  });
+}
+
+export function createStuntPlane(color = 0xd43825): VehicleRig {
+  const group = new THREE.Group();
+  const glass = glassMat(0x3a5f7d);
+  const wheelRadius = 0.32;
+  const length = 8.2;
+
+  const body = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.75, 0.75, 6.4, 12),
+    mat(color, 0.4)
+  );
+  body.rotation.x = Math.PI / 2;
+  body.position.set(0, 1.1, 0);
+  group.add(body);
+
+  const nose = new THREE.Mesh(
+    new THREE.ConeGeometry(0.75, 1.6, 12),
+    mat(0xffcc00, 0.4)
+  );
+  nose.rotation.x = Math.PI / 2;
+  nose.position.set(0, 1.1, 4.0);
+  group.add(nose);
+
+  const propGroup = new THREE.Group();
+  propGroup.position.set(0, 1.1, 4.85);
+  const propHub = new THREE.Mesh(
+    new THREE.ConeGeometry(0.28, 0.45, 10),
+    mat(0x222222, 0.3, 0.8)
+  );
+  propHub.rotation.x = Math.PI / 2;
+  propGroup.add(propHub);
+  rbox(propGroup, 2.6, 0.04, 0.18, 0.02, 0x1a1a1a, 0, 0, 0, 0.3);
+  group.add(propGroup);
+
+  rbox(group, 8.8, 0.16, 1.8, 0.05, color, 0, 1.15, 0.8, 0.4);
+  rbox(group, 8.7, 0.18, 0.4, 0.02, 0xffcc00, 0, 1.16, 0.8, 0.4);
+  rbox(group, 3.2, 0.14, 1.2, 0.04, color, 0, 1.25, -2.8, 0.4);
+  rbox(group, 0.16, 1.8, 1.4, 0.05, 0xffcc00, 0, 1.9, -2.9, 0.4);
+
+  rbox(group, 0.9, 0.65, 1.8, 0.2, 0x1d2e3d, 0, 1.6, 0.4).material = glass;
+
+  const driver = buildDriver();
+  driver.position.set(0, 1.05, 0.3);
+  group.add(driver);
+
+  const wheels = addWheels(
+    group,
+    wheelRadius,
+    [
+      [-1.1, 0.9, false],
+      [1.1, 0.9, false],
+      [0, -2.9, true]
+    ],
+    0.16
+  );
+
+  return finishVehicle({
+    group,
+    steerPivots: wheels.steerPivots,
+    spinners: wheels.spinners,
+    propellers: [propGroup],
+    wheelRadius,
+    length,
+    width: 8.8,
+    centerOfMassY: 1.1,
+    maxSpeed: 36,
+    driver,
+    kind: 'plane',
+    pitch: 0,
+    roll: 0,
+    yaw: 0,
+    altitude: 0,
+    verticalSpeed: 0,
+    access: {
+      label: 'STUNT PLANE',
+      entry: new THREE.Vector3(-1.4, 0, 0.4),
+      seat: new THREE.Vector3(0, 0, 0.3),
+      interactionRange: 3.8,
+      cameraHeight: 2.6
+    }
+  });
 }
