@@ -4171,6 +4171,42 @@ export function createCity(): City {
       box(0xf0f0f0, 0.7, 3.6, 3.6, 3.6, tx + 18, th + 2.8, tz - 6);
       addEmissiveLight(group, 0.3, 0.8, 0.3, 0xff1100, 0xff0000, 3.0, tx, th + 3.0, tz);
     }
+      // ------------------------------------------------------------------ Giant Plane Icon on Terminal Roof
+      // A massive airplane silhouette on top of the terminal so the airport
+      // is unmistakable from anywhere on the map.
+      {
+        const piTx = apx - 35;
+        const piTz = apz + 10;
+        const piTh = 16;
+        const piY = piTh + 6;
+        box(0xffffff, 0.9, 18, 1.6, 2.6, piTx, piY + 0.8, piTz, { ry: 0 });
+        box(0xe8e8e8, 0.8, 2.6, 1.2, 2.0, piTx + 11, piY + 0.8, piTz, { ry: 0 });
+        box(0x1a232a, 0.8, 2.2, 0.7, 42, piTx, piY, piTz - 22, { ry: 0 });
+        box(0x1a232a, 0.8, 2.2, 0.7, 42, piTx, piY, piTz + 22, { ry: 0 });
+        box(0x1a232a, 0.8, 0.7, 1.2, 0.9, piTx, piY + 0.5, piTz - 21.5, { ry: 0 });
+        box(0x1a232a, 0.8, 0.7, 1.2, 0.9, piTx, piY + 0.5, piTz + 21.5, { ry: 0 });
+        box(0xd4a12f, 0.8, 1.2, 3.4, 1.4, piTx - 7, piY + 2.5, piTz, { ry: 0 });
+        box(0x1a232a, 0.8, 0.7, 0.5, 10, piTx - 6, piY + 0.6, piTz, { ry: 0 });
+        box(0x8a929a, 0.6, 4, 0.4, 1.2, piTx + 9, piY + 1.0, piTz + 0.6, { ry: 0 });
+      }
+
+    // ------------------------------------------------------------------ Parked Airliners on Apron
+    {
+      const pz = apz - 45;
+      box(0x2c3540, 0.9, 34, 2.4, 6.6, apx - 45, 1.3, pz, { ry: 0 });
+      box(0x1a232a, 0.8, 32, 0.6, 6.2, apx - 45, 2.4, pz, { ry: 0 });
+      box(0x3a7bd5, 0.4, 6, 0.4, 1.4, apx - 45 + 12, 3.0, pz + 2.2, { ry: 0 });
+      box(0x3a7bd5, 0.4, 6, 0.4, 1.4, apx - 45 + 12, 3.0, pz - 2.2, { ry: 0 });
+      box(0xd4a12f, 0.8, 3.4, 2.0, 1.4, apx - 45 - 13, 1.6, pz, { ry: 0 });
+      colliders.push({ minX: apx - 45 - 17, maxX: apx - 45 + 17, minZ: pz - 3.4, maxZ: pz + 3.4 });
+
+      box(0x2c3540, 0.9, 34, 2.4, 6.6, apx + 45, 1.3, pz, { ry: Math.PI });
+      box(0x1a232a, 0.8, 32, 0.6, 6.2, apx + 45, 2.4, pz, { ry: Math.PI });
+      box(0x3a7bd5, 0.4, 6, 0.4, 1.4, apx + 45 - 12, 3.0, pz + 2.2, { ry: Math.PI });
+      box(0x3a7bd5, 0.4, 6, 0.4, 1.4, apx + 45 - 12, 3.0, pz - 2.2, { ry: Math.PI });
+      box(0xd4a12f, 0.8, 3.4, 2.0, 1.4, apx + 45 + 13, 1.6, pz, { ry: Math.PI });
+      colliders.push({ minX: apx + 45 - 17, maxX: apx + 45 + 17, minZ: pz - 3.4, maxZ: pz + 3.4 });
+    }
 
     // ------------------------------------------------------------------ 360° Control Tower with Rotating Radar
     {
