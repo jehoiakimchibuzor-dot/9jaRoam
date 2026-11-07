@@ -1472,13 +1472,13 @@ export class Game {
       }
 
       const targetPitch = -pitchY * 0.45;
-      const targetRoll = -steerX * 0.45;
+      const targetRoll = steerX * 0.45;
       aircraft.pitch += (targetPitch - aircraft.pitch) * Math.min(1.0, dt * 4.0);
       aircraft.roll += (targetRoll - aircraft.roll) * Math.min(1.0, dt * 4.0);
 
       const forwardAccel = -aircraft.pitch * 28 * liftPower;
       this.carSpeed += (forwardAccel - this.carSpeed) * Math.min(1.0, dt * 2.0);
-      this.carYaw -= steerX * 1.6 * dt;
+      this.carYaw += steerX * 1.6 * dt;
 
     } else {
       if (aircraft.propellers) {
@@ -1502,11 +1502,11 @@ export class Game {
 
       if (isAirborne) {
         const targetPitch = dive ? 0.42 : climb ? -0.42 : -pitchY * 0.45;
-        const targetRoll = -steerX * 0.55;
+        const targetRoll = steerX * 0.55;
         aircraft.pitch += (targetPitch - aircraft.pitch) * Math.min(1.0, dt * 3.5);
         aircraft.roll += (targetRoll - aircraft.roll) * Math.min(1.0, dt * 3.5);
 
-        const bankYaw = -aircraft.roll * 1.2;
+        const bankYaw = aircraft.roll * 1.2;
         this.carYaw += bankYaw * dt;
 
         const lift = (airspeed / 20) * Math.cos(aircraft.roll);
@@ -1516,7 +1516,7 @@ export class Game {
         aircraft.pitch += (0 - aircraft.pitch) * Math.min(1.0, dt * 6.0);
         aircraft.roll += (0 - aircraft.roll) * Math.min(1.0, dt * 6.0);
         aircraft.verticalSpeed = 0;
-        this.carYaw -= steerX * 1.8 * Math.min(1, airspeed / 8) * dt;
+        this.carYaw += steerX * 1.8 * Math.min(1, airspeed / 8) * dt;
       }
     }
 
