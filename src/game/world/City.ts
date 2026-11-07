@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { IS_ANDROID } from '../platform';
 
 export interface Collider {
@@ -836,6 +837,140 @@ function seededRandom(seed: number): () => number {
     s = (s * 1664525 + 1013904223) >>> 0;
     return s / 4294967296;
   };
+}
+
+let chainLinkMaterial: THREE.MeshStandardMaterial | null = null;
+
+/**
+ * Woven chain-link sheeting for the airport perimeter. Painted on canvas so
+ * the diamonds carry a hand-drawn wobble and a few rust freckles where the
+ * galvanising has failed, then cut out with alphaTest so the whole ring can
+ * merge into a single mesh without transparent depth-sorting artefacts.
+ */
+function getChainLinkMaterial(): THREE.MeshStandardMaterial {
+  if (chainLinkMaterial) return chainLinkMaterial;
+  const size = 256;
+  const step = 32;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.clearRect(0, 0, size, size);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // A fat dark strand first, a slim bright one on top: the pair reads as
+    // wire with a drawn outline instead of a flat, perfect lattice.
+    const strand = (dir: number, color: string, width: number) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      for (let c = -size; c <= size * 2; c += step) {
+        ctx.beginPath();
+        ctx.moveTo(c, 0);
+        ctx.lineTo(c + dir * size, size);
+        ctx.stroke();
+      }
+    };
+    strand(1, 'rgba(26, 31, 36, 0.9)', 5.5);
+    strand(-1, 'rgba(26, 31, 36, 0.9)', 5.5);
+    strand(1, 'rgba(174, 182, 189, 0.98)', 2.6);
+    strand(-1, 'rgba(174, 182, 189, 0.98)', 2.6);
+
+    // Rust only lands where wire already exists, never floating in the holes.
+    ctx.globalCompositeOperation = 'source-atop';
+    const rnd = seededRandom(0x5eed17);
+    for (let i = 0; i < 30; i += 1) {
+      const x = rnd() * size;
+      const y = rnd() * size;
+      const r = 3 + rnd() * 10;
+      const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, 'rgba(146, 82, 44, 0.6)');
+      grad.addColorStop(1, 'rgba(146, 82, 44, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 4;
+  chainLinkMaterial = new THREE.MeshStandardMaterial({
+    map: tex,
+    alphaTest: 0.5,
+    side: THREE.DoubleSide,
+    roughness: 0.6,
+    metalness: 0.2
+  });
+  return chainLinkMaterial;
+}
+
+let razorWireMaterial: THREE.MeshStandardMaterial | null = null;
+
+function getRazorWireMaterial(): THREE.MeshStandardMaterial {
+  if (!razorWireMaterial) {
+    razorWireMaterial = new THREE.MeshStandardMaterial({
+      color: 0xb7bcc0,
+      roughness: 0.52,
+      metalness: 0.38,
+      flatShading: true
+    });
+  }
+  return razorWireMaterial;
+}
+
+/**
+ * Concertina coil that tracks the fence polygon vertex for vertex, so the
+ * wire sits on exactly the same line as the panels instead of drifting off
+ * the faceted ring, and closes seamlessly back onto its own start.
+ */
+class PerimeterCoilCurve extends THREE.Curve<THREE.Vector3> {
+  private readonly vx: number[];
+  private readonly vz: number[];
+
+  constructor(
+    private readonly cx: number,
+    private readonly cz: number,
+    radius: number,
+    private readonly baseY: number,
+    private readonly coilRadius: number,
+    private readonly loops: number,
+    segments: number
+  ) {
+    super();
+    this.vx = [];
+    this.vz = [];
+    for (let i = 0; i <= segments; i += 1) {
+      const a = (i / segments) * Math.PI * 2;
+      this.vx.push(cx + Math.cos(a) * radius);
+      this.vz.push(cz + Math.sin(a) * radius);
+    }
+  }
+
+  getPoint(t: number, target = new THREE.Vector3()): THREE.Vector3 {
+    const last = this.vx.length - 1;
+    const u = t * last;
+    const i = Math.min(last - 1, Math.floor(u));
+    const f = u - i;
+    const px = this.vx[i] + (this.vx[i + 1] - this.vx[i]) * f;
+    const pz = this.vz[i] + (this.vz[i + 1] - this.vz[i]) * f;
+    let nx = px - this.cx;
+    let nz = pz - this.cz;
+    const len = Math.hypot(nx, nz) || 1;
+    nx /= len;
+    nz /= len;
+    const phase = t * this.loops * Math.PI * 2;
+    const off = this.coilRadius * Math.cos(phase);
+    return target.set(
+      px + nx * off,
+      this.baseY + this.coilRadius * Math.sin(phase),
+      pz + nz * off
+    );
+  }
 }
 
 const signTextureCache = new Map<string, THREE.CanvasTexture>();
@@ -4039,9 +4174,18 @@ export function createCity(): City {
     const apr = 100;
     const fenceY = 2.6;
     const fenceSegs = 72;
+    const postHeight = 3.4;
 
     box(0x9aa0a6, 0.9, apr * 2, 0.15, apr * 2, apx, -0.02, apz, { cast: false });
     contactShadow(apr * 2 + 4, apr * 2 + 4, apx, apz, 0.02);
+
+    // The chain-link sheeting merges into one mesh; posts and rails stay in
+    // the instanced batch alongside the rest of the street furniture.
+    const linkMaterial = getChainLinkMaterial();
+    const segLen = 2 * apr * Math.sin(Math.PI / fenceSegs);
+    if (linkMaterial.map) linkMaterial.map.repeat.set(segLen / 1.3, fenceY / 1.3);
+    const postGeometry = new THREE.CylinderGeometry(0.05, 0.065, postHeight, 7);
+    const panels: THREE.BufferGeometry[] = [];
 
     for (let i = 0; i < fenceSegs; i += 1) {
       const a0 = (i / fenceSegs) * Math.PI * 2;
@@ -4054,8 +4198,18 @@ export function createCity(): City {
       const cz = (z0 + z1) / 2;
       const len = Math.hypot(x1 - x0, z1 - z0);
       const yaw = Math.atan2(z1 - z0, x1 - x0);
-      box(0x3d444a, 0.9, len, fenceY, 0.14, cx, fenceY / 2, cz, { ry: yaw });
-      box(0x2b2d30, 0.9, len, 0.16, 0.14, cx, fenceY + 0.16, cz, { ry: yaw });
+
+      // A driven post at every panel joint.
+      cylinder('fence-post', postGeometry, 0x8b9299, 0.62, x0, postHeight / 2, z0);
+      // Top rail carries the mesh, bottom rail keeps it out of the dirt.
+      box(0x2f343a, 0.85, len, 0.15, 0.13, cx, fenceY + 0.14, cz, { ry: yaw });
+      box(0x2f343a, 0.85, len, 0.11, 0.11, cx, 0.13, cz, { ry: yaw });
+
+      const panel = new THREE.PlaneGeometry(len, fenceY);
+      panel.rotateY(yaw);
+      panel.translate(cx, fenceY / 2, cz);
+      panels.push(panel);
+
       colliders.push({
         minX: Math.min(x0, x1) - 1,
         maxX: Math.max(x0, x1) + 1,
@@ -4063,6 +4217,30 @@ export function createCity(): City {
         maxZ: Math.max(z0, z1) + 1
       });
     }
+
+    const mergedPanels = mergeGeometries(panels, false);
+    for (const panel of panels) panel.dispose();
+    if (mergedPanels) {
+      const fenceMesh = new THREE.Mesh(mergedPanels, linkMaterial);
+      fenceMesh.castShadow = true;
+      fenceMesh.receiveShadow = true;
+      group.add(fenceMesh);
+    }
+
+    // Concertina razor wire: loops packed tight enough to overlap the way a
+    // real coil sits on a perimeter fence, not a loose row of rings.
+    const coilSpacing = 0.45;
+    const coilRadius = 0.45;
+    const coilLoops = Math.max(1, Math.round((Math.PI * 2 * apr) / coilSpacing));
+    const coilCurve = new PerimeterCoilCurve(
+      apx, apz, apr, fenceY + coilRadius, coilRadius, coilLoops, fenceSegs
+    );
+    const coilMesh = new THREE.Mesh(
+      new THREE.TubeGeometry(coilCurve, coilLoops * 7, 0.035, 3, true),
+      getRazorWireMaterial()
+    );
+    coilMesh.castShadow = true;
+    group.add(coilMesh);
 
     const gateAngles = [0, Math.PI / 2, Math.PI, 3 * Math.PI / 2];
     for (const ga of gateAngles) {
