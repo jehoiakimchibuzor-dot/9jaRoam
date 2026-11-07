@@ -324,7 +324,7 @@ export class Game {
   private mapPinchDistance = 0;
   private mapPinchGesture = false;
   private pinnedWaypoint: THREE.Vector3 | null = null;
-  private dprCap = IS_ANDROID ? 1.5 : 2;
+  private dprCap = IS_ANDROID ? 1.0 : 2;
   private perfTimer = 0;
   private swimming = false;
   private waterWarned = false;
@@ -356,8 +356,9 @@ export class Game {
   constructor(canvas: HTMLCanvasElement, hud: GameHud) {
     this.renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: true,
-      powerPreference: 'high-performance'
+      antialias: !IS_ANDROID,
+      powerPreference: 'high-performance',
+      precision: IS_ANDROID ? 'mediump' : 'highp'
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.dprCap));
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
@@ -503,7 +504,7 @@ export class Game {
 
     this.interiors = new Interiors(this.scene, this.city);
     this.trains = new TrainService(this.scene, this.city);
-    this.traffic = new Traffic(this.scene, this.city, IS_ANDROID ? 26 : undefined);
+    this.traffic = new Traffic(this.scene, this.city, IS_ANDROID ? 16 : undefined);
     this.traffic.onCrash = (position, speed) => this.onTrafficCrash(position, speed);
     this.traffic.onWreck = (position, yaw) => {
       this.pedestrians.ejectDriver(position, yaw);
@@ -524,10 +525,10 @@ export class Game {
       );
       if (distance < 45) this.showToast('VEHICLE WRECKED \u00b7 DRIVER BAILED OUT');
     };
-    this.pedestrians = new Pedestrians(this.scene, this.city, IS_ANDROID ? 32 : 60);
+    this.pedestrians = new Pedestrians(this.scene, this.city, IS_ANDROID ? 20 : 60);
     this.streetPeople = new StreetPeople(this.scene, this.city);
     this.planes = new Planes(this.scene);
-    this.birds = new Birds(this.scene, IS_ANDROID ? 12 : 20);
+    this.birds = new Birds(this.scene, IS_ANDROID ? 8 : 20);
     const callbacks = this.makeCombatCallbacks();
     this.interiors.setKilledCallback((position) => callbacks.onCivilianKilled(position));
     this.pedestrians.setKilledCallback((position) => callbacks.onCivilianKilled(position));
@@ -766,19 +767,19 @@ export class Game {
 
   private adaptResolution(dt: number): void {
     this.perfTimer += dt;
-    if (this.perfTimer < 3) return;
+    if (this.perfTimer < 2) return;
     this.perfTimer = 0;
     const dpr = this.renderer.getPixelRatio();
-    const minDpr = 1;
-    const maxDpr = Math.min(window.devicePixelRatio || 1, IS_ANDROID ? 1.5 : 2);
-    const lowFps = IS_ANDROID ? 42 : 28;
-    const highFps = IS_ANDROID ? 56 : 54;
+    const minDpr = IS_ANDROID ? 0.75 : 1;
+    const maxDpr = Math.min(window.devicePixelRatio || 1, IS_ANDROID ? 1.0 : 2);
+    const lowFps = IS_ANDROID ? 45 : 28;
+    const highFps = IS_ANDROID ? 58 : 54;
     if (this.fps < lowFps && dpr > minDpr + 0.01) {
-      this.dprCap = Math.max(minDpr, dpr - 0.15);
+      this.dprCap = Math.max(minDpr, dpr - 0.1);
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.dprCap));
       this.renderer.setSize(window.innerWidth, window.innerHeight, false);
     } else if (this.fps > highFps && dpr < maxDpr - 0.01) {
-      this.dprCap = Math.min(maxDpr, dpr + 0.15);
+      this.dprCap = Math.min(maxDpr, dpr + 0.1);
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.dprCap));
       this.renderer.setSize(window.innerWidth, window.innerHeight, false);
     }
