@@ -274,11 +274,26 @@ export const RIVER_MAX_X = 310;
 export const RIVER_SURFACE_Y = -1.15;
 export const CROSS_HALF = 9;
 export const CROSS_ZS = [-488, -336, -180, -12, 128, 264, 412];
-// The international airport sits on the far east coast, past the last row of
-// east-bank buildings. Nothing else may be generated inside this circle.
-export const AIRPORT_X = 560;
+// The international airport sits on the far east coast, well past the last row
+// of east-bank buildings, with open desert between the city edge and the
+// perimeter fence. Nothing else may be generated inside this circle.
+export const AIRPORT_X = 700;
 export const AIRPORT_Z = -200;
 export const AIRPORT_R = 100;
+/** Where the access road meets the perimeter: the north-west corner. */
+export const AIRPORT_GATE_ANGLE = Math.PI * 1.25;
+/** The cross street the airport access road branches off, at the east city edge. */
+export const AIRPORT_ACCESS_Z = CROSS_ZS[1];
+/** How far east a lane at this z may run before it would enter the airport circle. */
+export function airportWestLimitX(z: number): number {
+  const dz = z - AIRPORT_Z;
+  if (Math.abs(dz) >= AIRPORT_R) return Infinity;
+  return AIRPORT_X - Math.sqrt(AIRPORT_R * AIRPORT_R - dz * dz) - 6;
+}
+/** True when a north-south lane at this x would cut straight through the airport. */
+export function airportBlocksZLane(x: number): boolean {
+  return Math.abs(x - AIRPORT_X) < AIRPORT_R + 8;
+}
 // Ocean beyond the city edges.
 export const OCEAN_EDGE = 860;
 export const OCEAN_SURFACE_Y = -0.35;
@@ -939,13 +954,15 @@ class PerimeterCoilCurve extends THREE.Curve<THREE.Vector3> {
     private readonly baseY: number,
     private readonly coilRadius: number,
     private readonly loops: number,
-    segments: number
+    segments: number,
+    startAngle = 0,
+    angleSpan = Math.PI * 2
   ) {
     super();
     this.vx = [];
     this.vz = [];
     for (let i = 0; i <= segments; i += 1) {
-      const a = (i / segments) * Math.PI * 2;
+      const a = startAngle + (i / segments) * angleSpan;
       this.vx.push(cx + Math.cos(a) * radius);
       this.vz.push(cz + Math.sin(a) * radius);
     }
@@ -2182,7 +2199,7 @@ export function createCity(): City {
   const mountainColors = [0x776044, 0x806848, 0x8c704a, 0x6e5a43];
   const mountainSites: Array<{ x: number; z: number; radius: number; height: number }> = [
     { x: 700, z: -360, radius: 48, height: 45 },
-    { x: 720, z: -170, radius: 66, height: 61 },
+    { x: 830, z: -320, radius: 66, height: 61 },
     { x: 850, z: -410, radius: 74, height: 72 },
     { x: 955, z: -220, radius: 43, height: 40 },
     { x: 1110, z: -405, radius: 82, height: 78 },
@@ -4121,9 +4138,10 @@ export function createCity(): City {
   }
 
   // Cross streets stop at the desert on the east and at the west shoreline.
-  // The arm that ends at the airport fence gets its barrier there instead.
+  // The arm that becomes the airport access road keeps its end open, and the
+  // arm that ends at the airport fence gets its barrier there instead.
   for (const cz of CROSS_ZS) {
-    if (Math.abs(cz - DESERT_HIGHWAY_Z) > 0.5) {
+    if (Math.abs(cz - DESERT_HIGHWAY_Z) > 0.5 && cz !== AIRPORT_ACCESS_Z) {
       addRoadEnd(crossStreetEndX(cz) - 4, cz, 'z', -Math.PI / 2, CROSS_HALF);
     }
     addRoadEnd(WEST_DISTRICT_MIN_X + 4, cz, 'z', Math.PI / 2, CROSS_HALF);
@@ -4169,12 +4187,17 @@ export function createCity(): City {
   const windsockGroup = new THREE.Group();
 
   {
-    const apx = 560;
-    const apz = -200;
-    const apr = 100;
+    const apx = AIRPORT_X;
+    const apz = AIRPORT_Z;
+    const apr = AIRPORT_R;
     const fenceY = 2.6;
     const fenceSegs = 72;
     const postHeight = 3.4;
+    // Two panels of the ring are left open for the access road gate. The gap is
+    // centred on the gate angle so the road meets the fence right in the middle.
+    const gateSegs = 2;
+    const gateSegIndex =
+      Math.round((AIRPORT_GATE_ANGLE / (Math.PI * 2)) * fenceSegs) - Math.floor(gateSegs / 2);
 
     box(0x9aa0a6, 0.9, apr * 2, 0.15, apr * 2, apx, -0.02, apz, { cast: false });
     contactShadow(apr * 2 + 4, apr * 2 + 4, apx, apz, 0.02);
@@ -4188,6 +4211,7 @@ export function createCity(): City {
     const panels: THREE.BufferGeometry[] = [];
 
     for (let i = 0; i < fenceSegs; i += 1) {
+      const inGate = i >= gateSegIndex && i < gateSegIndex + gateSegs;
       const a0 = (i / fenceSegs) * Math.PI * 2;
       const a1 = ((i + 1) / fenceSegs) * Math.PI * 2;
       const x0 = apx + Math.cos(a0) * apr;
@@ -4197,10 +4221,17 @@ export function createCity(): City {
       const cx = (x0 + x1) / 2;
       const cz = (z0 + z1) / 2;
       const len = Math.hypot(x1 - x0, z1 - z0);
-      const yaw = Math.atan2(z1 - z0, x1 - x0);
+      // A box/plane's local +X maps to (cos ry, -sin ry), so the rotation is
+      // the negated heading. With +yaw the panels lie across the fence line at
+      // every diagonal segment instead of along it.
+      const yaw = -Math.atan2(z1 - z0, x1 - x0);
 
-      // A driven post at every panel joint.
-      cylinder('fence-post', postGeometry, 0x8b9299, 0.62, x0, postHeight / 2, z0);
+      // A driven post at every joint except the one in the middle of the gate
+      // opening; both gate-edge posts stay as the frame.
+      if (!(inGate && i > gateSegIndex)) {
+        cylinder('fence-post', postGeometry, 0x8b9299, 0.62, x0, postHeight / 2, z0);
+      }
+      if (inGate) continue;
       // Top rail carries the mesh, bottom rail keeps it out of the dirt.
       box(0x2f343a, 0.85, len, 0.15, 0.13, cx, fenceY + 0.14, cz, { ry: yaw });
       box(0x2f343a, 0.85, len, 0.11, 0.11, cx, 0.13, cz, { ry: yaw });
@@ -4228,15 +4259,21 @@ export function createCity(): City {
     }
 
     // Concertina razor wire: loops packed tight enough to overlap the way a
-    // real coil sits on a perimeter fence, not a loose row of rings.
+    // real coil sits on a perimeter fence, not a loose row of rings. It stops
+    // either side of the gate so the entrance is clear overhead too.
     const coilSpacing = 0.45;
     const coilRadius = 0.45;
-    const coilLoops = Math.max(1, Math.round((Math.PI * 2 * apr) / coilSpacing));
+    const gateA0 = (gateSegIndex / fenceSegs) * Math.PI * 2;
+    const gateA1 = ((gateSegIndex + gateSegs) / fenceSegs) * Math.PI * 2;
+    const coilStart = gateA1;
+    const coilSpan = Math.PI * 2 - (gateA1 - gateA0);
+    const coilLoops = Math.max(1, Math.round((apr * coilSpan) / coilSpacing));
     const coilCurve = new PerimeterCoilCurve(
-      apx, apz, apr, fenceY + coilRadius, coilRadius, coilLoops, fenceSegs
+      apx, apz, apr, fenceY + coilRadius, coilRadius, coilLoops, fenceSegs,
+      coilStart, coilSpan
     );
     const coilMesh = new THREE.Mesh(
-      new THREE.TubeGeometry(coilCurve, coilLoops * 7, 0.035, 3, true),
+      new THREE.TubeGeometry(coilCurve, coilLoops * 7, 0.035, 3, false),
       getRazorWireMaterial()
     );
     coilMesh.castShadow = true;
@@ -4246,12 +4283,18 @@ export function createCity(): City {
     for (const ga of gateAngles) {
       const gx = apx + Math.cos(ga) * (apr - 3);
       const gz = apz + Math.sin(ga) * (apr - 3);
-      box(0x4a525a, 0.9, 6, fenceY, 0.3, gx, fenceY / 2, gz, { ry: ga });
-      box(0x4a525a, 0.9, 6, 0.16, 0.3, gx, fenceY + 0.16, gz, { ry: ga });
+      // Maintenance gates closed across the fence line: the panel spans along
+      // the tangent, which is the negated heading plus a quarter turn.
+      const gateYaw = -ga - Math.PI / 2;
+      box(0x4a525a, 0.9, 6, fenceY, 0.3, gx, fenceY / 2, gz, { ry: gateYaw });
+      box(0x4a525a, 0.9, 6, 0.16, 0.3, gx, fenceY + 0.16, gz, { ry: gateYaw });
     }
 
     // ------------------------------------------------------------------ Runway & Markings
-    const rwLen = 220;
+    // Long enough to look the part but short enough to stay inside the fence:
+    // at 220 the strip poked through both fence lines and its collider walled
+    // the east half of the field off from the west half.
+    const rwLen = 170;
     const rwW = 42;
     box(0x45484d, 0.9, rwW, 0.2, rwLen, apx, 0.1, apz, { cast: false });
     box(0x33363a, 0.9, rwW + 4, 0.12, rwLen + 4, apx, 0.08, apz, { cast: false });
@@ -4505,8 +4548,6 @@ export function createCity(): City {
       colliders.push({ minX: gx - 1.5, maxX: gx + 1.5, minZ: gz - 2.4, maxZ: gz + 2.4 });
     }
 
-    addSign(group, '9JA INTERNATIONAL AIRPORT', '#1b2a33', '#ffd24a', apx - 130, fenceY + 1.4, apz - 130, 0, 13);
-
     // ------------------------------------------------------------------ Helipad
     const hx = apx + 60, hz = apz + 40;
     box(0x3a3d42, 0.9, 22, 0.15, 22, hx, 0.08, hz, { cast: false });
@@ -4517,15 +4558,75 @@ export function createCity(): City {
     box(0xf5cd2e, 0.9, 1.2, 0.02, 6.4, hx + 2.2, 0.17, hz, { cast: false });
     box(0xf5cd2e, 0.9, 5.6, 0.02, 1.2, hx, 0.17, hz, { cast: false });
 
+    // ------------------------------------------------------------------ Airport Access Road
+    // Leaves the z=-336 cross street at the east city edge, crosses the desert
+    // on the diagonal and meets the perimeter gate at the north-west corner.
+    const gateA = AIRPORT_GATE_ANGLE;
+    const gateX = apx + Math.cos(gateA) * apr;
+    const gateZ = apz + Math.sin(gateA) * apr;
+    const accessStartX = 508;
+    const accessStartZ = AIRPORT_ACCESS_Z;
+    const accessEndX = gateX;
+    const accessEndZ = gateZ;
+    const accessDx = accessEndX - accessStartX;
+    const accessDz = accessEndZ - accessStartZ;
+    const accessLen = Math.hypot(accessDx, accessDz);
+    const accessYaw = -Math.atan2(accessDz, accessDx);
+    const accessDirX = accessDx / accessLen;
+    const accessDirZ = accessDz / accessLen;
+    const accessMidX = (accessStartX + accessEndX) / 2;
+    const accessMidZ = (accessStartZ + accessEndZ) / 2;
+    const accessHalf = 8;
+    box(0x3f4246, 1, accessLen, 0.2, accessHalf * 2, accessMidX, -0.1, accessMidZ, { ry: accessYaw });
+    // Double centre line and edge lines, laid along the same heading.
+    for (const off of [-0.22, 0.22]) {
+      box(
+        0xe6c445, 0.95, accessLen, 0.012, 0.12,
+        accessMidX - accessDirZ * off, 0.013, accessMidZ + accessDirX * off,
+        { ry: accessYaw }
+      );
+    }
+    for (const off of [-accessHalf + 0.5, accessHalf - 0.5]) {
+      box(
+        0xe8e2cf, 0.95, accessLen, 0.012, 0.16,
+        accessMidX - accessDirZ * off, 0.013, accessMidZ + accessDirX * off,
+        { ry: accessYaw }
+      );
+    }
+    // Big roadside sign, set back from the approach and turned to face the
+    // traffic driving out of the city.
+    const signT = 0.45;
+    addSign(
+      group,
+      '9JA INTERNATIONAL AIRPORT',
+      '#1b2a33',
+      '#ffd24a',
+      accessStartX + accessDx * signT - accessDirZ * 9,
+      fenceY + 1.4,
+      accessStartZ + accessDz * signT + accessDirX * 9,
+      Math.atan2(-accessDirX, -accessDirZ),
+      13
+    );
+
     // ------------------------------------------------------------------ Interactive Gate
+    // The boom, booth and signals stand on the corner where the access road
+    // cuts through the perimeter, so everything is laid out relative to the
+    // gate point: inward toward the apron, tangent along the fence line.
+    const inwardX = -Math.cos(gateA);
+    const inwardZ = -Math.sin(gateA);
+    const tangentX = -Math.sin(gateA);
+    const tangentZ = Math.cos(gateA);
+    const fenceYaw = -Math.atan2(tangentZ, tangentX);
+
     const gateArmGroup = new THREE.Group();
-    gateArmGroup.position.set(apx - apr + 4, 1.3, apz);
+    gateArmGroup.position.set(gateX, 1.3, gateZ);
+    gateArmGroup.rotation.y = fenceYaw;
 
     const armMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(7.5, 0.16, 0.16),
+      new THREE.BoxGeometry(12, 0.16, 0.16),
       new THREE.MeshStandardMaterial({ color: 0xee3322, roughness: 0.6 })
     );
-    armMesh.position.set(3.75, 0, 0);
+    armMesh.position.set(6, 0, 0);
     gateArmGroup.add(armMesh);
 
     for (let s = 1; s < 6; s += 2) {
@@ -4533,16 +4634,20 @@ export function createCity(): City {
         new THREE.BoxGeometry(1.2, 0.18, 0.18),
         new THREE.MeshStandardMaterial({ color: 0xffffea, roughness: 0.6 })
       );
-      stripe.position.set(s * 1.25, 0, 0);
+      stripe.position.set(s * 1.25 + 2, 0, 0);
       gateArmGroup.add(stripe);
     }
     group.add(gateArmGroup);
 
-    box(0x3a424a, 0.9, 2.8, 2.6, 3.2, apx - apr + 1.2, 1.3, apz - 3.8);
-    box(0xd8c8a8, 0.9, 3.0, 0.3, 3.4, apx - apr + 1.2, 2.75, apz - 3.8);
+    const boothX = gateX + inwardX * 1.2 + tangentX * 3.8;
+    const boothZ = gateZ + inwardZ * 1.2 + tangentZ * 3.8;
+    box(0x3a424a, 0.9, 2.8, 2.6, 3.2, boothX, 1.3, boothZ, { ry: fenceYaw });
+    box(0xd8c8a8, 0.9, 3.0, 0.3, 3.4, boothX, 2.75, boothZ, { ry: fenceYaw });
 
-    const signalRed = addEmissiveLight(group, 0.2, 0.2, 0.15, 0xff2222, 0xff0000, 2.0, apx - apr + 3.8, 2.2, apz - 0.2);
-    const signalGreen = addEmissiveLight(group, 0.2, 0.2, 0.15, 0x22ff44, 0x00ff44, 0.5, apx - apr + 3.8, 1.9, apz - 0.2);
+    const signalX = gateX + inwardX * 3.8 - tangentX * 0.2;
+    const signalZ = gateZ + inwardZ * 3.8 - tangentZ * 0.2;
+    const signalRed = addEmissiveLight(group, 0.2, 0.2, 0.15, 0xff2222, 0xff0000, 2.0, signalX, 2.2, signalZ);
+    const signalGreen = addEmissiveLight(group, 0.2, 0.2, 0.15, 0x22ff44, 0x00ff44, 0.5, signalX, 1.9, signalZ);
 
     let gateAngle = 0;
     let gateOpen = false;
@@ -4550,7 +4655,7 @@ export function createCity(): City {
     var airportGate: AirportGate = {
       group,
       armGroup: gateArmGroup,
-      boothPosition: new THREE.Vector3(apx - apr + 4, 0, apz),
+      boothPosition: new THREE.Vector3(gateX, 0, gateZ),
       open: false,
       angle: 0,
       update: (dt: number, playerPos: THREE.Vector3, playerSpeed: number) => {
@@ -4558,14 +4663,14 @@ export function createCity(): City {
         let breached = false;
         if (dist < 14) {
           gateOpen = true;
-          if (playerSpeed > 9 && dist < 5 && gateAngle > -0.3) {
+          if (playerSpeed > 9 && dist < 5 && gateAngle < 0.3) {
             breached = true;
           }
         } else if (dist > 18) {
           gateOpen = false;
         }
 
-        const targetAngle = gateOpen ? -Math.PI / 2.2 : 0;
+        const targetAngle = gateOpen ? Math.PI / 2.2 : 0;
         gateAngle += (targetAngle - gateAngle) * Math.min(1.0, dt * 5.0);
         gateArmGroup.rotation.z = gateAngle;
 

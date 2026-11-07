@@ -4,6 +4,7 @@ import {
   AIRPORT_R,
   AIRPORT_X,
   AIRPORT_Z,
+  airportBlocksZLane,
   CAUSEWAY_X,
   CROSS_HALF,
   CROSS_ZS,
@@ -271,9 +272,12 @@ const LANES: LaneSpec[] = [];
   // Boulevard: left half northbound, right half southbound.
   for (const fixed of [-MAIN_OUTER, -MAIN_INNER]) LANES.push({ axis: 'z', fixed, dir: 1 });
   for (const fixed of [MAIN_INNER, MAIN_OUTER]) LANES.push({ axis: 'z', fixed, dir: -1 });
-  // Every avenue and ring road, both carriageways.
+  // Every avenue and ring road, both carriageways. Lanes that would slice
+  // straight through the airport perimeter are dropped: AI cars never test
+  // static colliders, so a lane through the fence would drive through it.
   for (const road of SIDE_ROADS) {
     const lane = roadHalfFor(road) * 0.5;
+    if (airportBlocksZLane(road - lane)) continue;
     LANES.push({ axis: 'z', fixed: road - lane, dir: 1 });
     LANES.push({ axis: 'z', fixed: road + lane, dir: -1 });
   }

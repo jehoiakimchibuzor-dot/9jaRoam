@@ -30,6 +30,8 @@ import { Planes } from './entities/Planes';
 import { Birds } from './entities/Birds';
 import { TrainService } from './entities/Train';
 import {
+  AIRPORT_X,
+  AIRPORT_Z,
   City,
   CitySite,
   Collider,
@@ -469,9 +471,10 @@ export class Game {
       this.scene.add(vehicle.group);
     }
 
-    // Spawn Airport Aircraft Rigs
+    // Spawn Airport Aircraft Rigs — parked relative to the field centre so a
+    // relocated airport drags its aircraft along with it.
     const jet = createShamalJet(0x1e3a60);
-    jet.group.position.set(480, 0.1, -190);
+    jet.group.position.set(AIRPORT_X - 80, 0.1, AIRPORT_Z + 10);
     jet.group.rotation.y = Math.PI / 2;
     ensureRigHealth(jet);
     jet.group.userData.saveId = 'airport-shamal-jet';
@@ -480,7 +483,7 @@ export class Game {
     this.drivableVehicles.push(jet);
 
     const chopper = createMaverickHelicopter(0x2d4838);
-    chopper.group.position.set(620, 0.1, -160);
+    chopper.group.position.set(AIRPORT_X + 60, 0.1, AIRPORT_Z + 40);
     chopper.group.rotation.y = 0;
     ensureRigHealth(chopper);
     chopper.group.userData.saveId = 'airport-maverick-chopper';
@@ -489,7 +492,8 @@ export class Game {
     this.drivableVehicles.push(chopper);
 
     const stuntPlane = createStuntPlane(0xd03525);
-    stuntPlane.group.position.set(590, 0.1, -140);
+    // Off the hangar floor and out on the open apron, clear of the helipad.
+    stuntPlane.group.position.set(AIRPORT_X + 30, 0.1, AIRPORT_Z + 30);
     stuntPlane.group.rotation.y = -Math.PI / 2;
     ensureRigHealth(stuntPlane);
     stuntPlane.group.userData.saveId = 'airport-stunt-plane';

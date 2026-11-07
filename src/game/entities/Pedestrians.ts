@@ -11,6 +11,8 @@ import {
   CROSS_HALF,
   CROSS_ZS,
   ROAD_HALF,
+  airportBlocksZLane,
+  airportWestLimitX,
   roadHalfFor,
   SIDE_ROADS,
   WEST_DISTRICT_MIN_X,
@@ -25,6 +27,19 @@ type PropKind = 'tray' | 'bag' | 'backpack' | 'stick' | 'phone';
 
 const VIEW_DISTANCE = IS_ANDROID ? 58 : 95;
 const RECYCLE_DISTANCE = IS_ANDROID ? 155 : 230;
+
+/**
+ * Pedestrian lanes are straight lines with no collision test, so a lane that
+ * intersects the fenced airport would walk through the wall. North-south
+ * lanes that cut the circle are re-rolled onto a road that misses it.
+ */
+function clearSideRoad(): number {
+  for (let tries = 0; tries < 6; tries += 1) {
+    const road = SIDE_ROADS[Math.floor(Math.random() * SIDE_ROADS.length)];
+    if (!airportBlocksZLane(road + roadHalfFor(road) + 3.2)) return road;
+  }
+  return SIDE_ROADS[SIDE_ROADS.length - 1];
+}
 
 export interface Pedestrian {
   group: THREE.Group;
@@ -312,7 +327,7 @@ export class Pedestrians {
         fixed = side * (ROAD_HALF + 2.5 + Math.random() * 1.3);
         along = i < 14 ? 30 + (Math.random() - 0.5) * 150 : -zLimit + Math.random() * zLimit * 2;
       } else if (style === 3) {
-        const road = SIDE_ROADS[Math.floor(Math.random() * SIDE_ROADS.length)];
+        const road = clearSideRoad();
         const side = Math.random() < 0.5 ? -1 : 1;
         fixed = road + side * (roadHalfFor(road) + 2.2 + Math.random());
         along = -zLimit + Math.random() * zLimit * 2;
@@ -321,10 +336,10 @@ export class Pedestrians {
         const crossZ = CROSS_ZS[Math.floor(Math.random() * CROSS_ZS.length)];
         fixed = crossZ + (Math.random() < 0.5 ? -1 : 1) * (CROSS_HALF + 1 + Math.random() * 0.8);
         min = WEST_DISTRICT_MIN_X + 2;
-        max = WORLD_HALF_X - 12;
+        max = Math.min(WORLD_HALF_X - 12, airportWestLimitX(fixed));
         along = min + Math.random() * (max - min);
       } else if (style === 5) {
-        const road = SIDE_ROADS[Math.floor(Math.random() * SIDE_ROADS.length)];
+        const road = clearSideRoad();
         const side = Math.random() < 0.5 ? -1 : 1;
         fixed = road + side * (roadHalfFor(road) + 2.2 + Math.random());
         along = -zLimit + Math.random() * zLimit * 2;
@@ -333,7 +348,7 @@ export class Pedestrians {
         const crossZ = CROSS_ZS[Math.floor(Math.random() * CROSS_ZS.length)];
         fixed = crossZ + (Math.random() < 0.5 ? -1 : 1) * (CROSS_HALF + 1 + Math.random() * 0.8);
         min = WEST_DISTRICT_MIN_X + 2;
-        max = WORLD_HALF_X - 12;
+        max = Math.min(WORLD_HALF_X - 12, airportWestLimitX(fixed));
         along = min + Math.random() * (max - min);
       }
 
@@ -719,7 +734,7 @@ export class Pedestrians {
         const side = Math.random() < 0.5 ? -1 : 1;
         p.fixed = side * (ROAD_HALF + 2.5 + Math.random() * 1.2);
       } else {
-        const road = SIDE_ROADS[Math.floor(Math.random() * SIDE_ROADS.length)];
+        const road = clearSideRoad();
         const side = Math.random() < 0.5 ? -1 : 1;
         p.fixed = road + side * (roadHalfFor(road) + 2.2 + Math.random());
       }
@@ -735,7 +750,7 @@ export class Pedestrians {
       const side = Math.random() < 0.5 ? -1 : 1;
       p.fixed = nearest + side * (CROSS_HALF + 1 + Math.random() * 0.8);
       p.min = WEST_DISTRICT_MIN_X + 2;
-      p.max = xLimit;
+      p.max = Math.min(xLimit, airportWestLimitX(p.fixed));
       p.along = Math.max(p.min, this.nearbyCoordinate(player.x, xLimit, 70, 125));
     }
 
