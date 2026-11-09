@@ -51,53 +51,95 @@ function buildAirliner(livery: number): { group: THREE.Group; beacon: THREE.Mesh
   const glass = 0x16202a;
 
   const fuselage = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.95, 0.95, 15, 12),
-    new THREE.MeshStandardMaterial({ color: white, roughness: 0.45 })
+    new THREE.CylinderGeometry(0.85, 0.85, 18, 32),
+    new THREE.MeshStandardMaterial({ color: white, roughness: 0.4 })
   );
   fuselage.rotation.x = Math.PI / 2;
   group.add(fuselage);
 
   const nose = new THREE.Mesh(
-    new THREE.ConeGeometry(0.95, 2.6, 12),
-    new THREE.MeshStandardMaterial({ color: white, roughness: 0.45 })
+    new THREE.ConeGeometry(0.85, 3.2, 32),
+    new THREE.MeshStandardMaterial({ color: white, roughness: 0.4 })
   );
   nose.rotation.x = Math.PI / 2;
-  nose.position.z = 8.8;
+  nose.position.z = 10.2;
   group.add(nose);
 
-  const tail = new THREE.Mesh(
-    new THREE.ConeGeometry(0.95, 3.2, 12),
-    new THREE.MeshStandardMaterial({ color: white, roughness: 0.45 })
+  const tailCone = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.85, 0.4, 4, 32),
+    new THREE.MeshStandardMaterial({ color: white, roughness: 0.4 })
   );
-  tail.rotation.x = -Math.PI / 2;
-  tail.position.z = -9.1;
-  group.add(tail);
+  tailCone.rotation.x = -Math.PI / 2;
+  tailCone.position.z = -10.6;
+  group.add(tailCone);
 
-  // Main wings and tailplane.
-  box(group, 23, 0.22, 2.7, white, 0, -0.15, 0.6, 0.5);
-  box(group, 6.4, 0.18, 1.7, white, 0, -0.02, -2.2, 0.5);
-  box(group, 7.2, 0.16, 1.5, white, 0, 0.5, -6.4, 0.5);
-  const fin = box(group, 0.22, 3.3, 2.2, livery, 0, 2.0, -6.5, 0.5);
-  fin.rotation.x = -0.16;
+  // Tail fin: tall, swept back
+  const fin = new THREE.Mesh(
+    new THREE.BoxGeometry(0.18, 3.6, 3.4),
+    new THREE.MeshStandardMaterial({ color: livery, roughness: 0.5 })
+  );
+  fin.position.set(0, 2.3, -7.2);
+  fin.rotation.z = 0.15;
+  group.add(fin);
 
-  // Engine nacelles.
+  // Tailplane (horizontal stabilizers)
+  box(group, 7, 0.16, 2.2, white, 0, 0.05, -5.6, 0.5);
+  box(group, 7, 0.12, 1.2, white, 0, 0.15, -6.2, 0.5);
+
+  // Main wings: swept back, with winglets
+  box(group, 26, 0.2, 3.2, white, 0, -0.1, 1.0, 0.5);
+
+  // Winglets at wingtips
+  box(group, 0.12, 1.4, 1.0, livery, -12.9, 0.6, 1.0, 0.5);
+  box(group, 0.12, 1.4, 1.0, livery, 12.9, 0.6, 1.0, 0.5);
+
+  // Engine nacelles under wings (proper pylons)
   for (const side of [-1, 1]) {
     const engine = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.55, 0.62, 2.3, 10),
+      new THREE.CylinderGeometry(0.5, 0.58, 2.6, 24),
       new THREE.MeshStandardMaterial({ color: 0xb8bdc2, roughness: 0.4, metalness: 0.2 })
     );
     engine.rotation.x = Math.PI / 2;
-    engine.position.set(side * 3.6, -0.75, 0.2);
+    engine.position.set(side * 4.4, -0.8, 0.4);
     group.add(engine);
-    box(group, 0.16, 0.5, 1.2, dark, side * 3.6, -0.95, 0.4, 0.7);
+
+    // Engine pylon (strut)
+    box(group, 0.2, 0.6, 1.0, dark, side * 4.4, -0.55, -0.2, 0.5);
+
+    // Engine intake ring
+    box(group, 0.14, 0.14, 0.5, dark, side * 4.4, -0.85, 1.6, 0.5);
   }
 
-  // Livery stripe and cockpit glass.
+  // Livery stripe along fuselage
   for (const side of [-1, 1]) {
-    box(group, 0.06, 0.24, 12.6, livery, side * 0.9, -0.18, 1.2, 0.55);
-    box(group, 0.06, 0.34, 11.2, glass, side * 0.92, 0.28, 0.6, 0.3);
+    box(group, 0.05, 0.22, 14.2, livery, side * 0.88, -0.16, 1.4, 0.55);
+    box(group, 0.05, 0.32, 10.8, glass, side * 0.9, 0.26, 0.6, 0.3);
   }
-  box(group, 1.5, 0.32, 0.08, glass, 0, 0.34, 7.2, 0.3);
+
+  // Cockpit windows
+  box(group, 1.6, 0.3, 0.08, glass, 0, 0.32, 8.6, 0.3);
+
+  // Landing gear (visible wheels under fuselage)
+  for (const side of [-1, 1]) {
+    const wheel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.28, 0.28, 0.14, 16),
+      new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 })
+    );
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(side * 1.6, -1.05, 2.4);
+    group.add(wheel);
+    // Wheel strut
+    box(group, 0.1, 0.9, 0.1, dark, side * 1.6, -0.6, 2.4, 0.5);
+  }
+
+  // Nose gear
+  const noseWheel = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.2, 0.2, 0.12, 12),
+    new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 })
+  );
+  noseWheel.rotation.z = Math.PI / 2;
+  noseWheel.position.set(0, -0.95, 8.4);
+  group.add(noseWheel);
 
   // Marker beacon on the spine.
   mergeVehicleShell(group);
@@ -107,11 +149,11 @@ function buildAirliner(livery: number): { group: THREE.Group; beacon: THREE.Mesh
   group.add(beacon);
 
   // Wingtip navigation lights (kept out of the merged shell so they glow).
-  const left = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 6), navMat(0xff3a2a));
-  left.position.set(-11.4, -0.12, 1.4);
+  const left = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), navMat(0xff3a2a));
+  left.position.set(-12.8, -0.05, 1.6);
   group.add(left);
-  const right = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 6), navMat(0x2aff6a));
-  right.position.set(11.4, -0.12, 1.4);
+  const right = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), navMat(0x2aff6a));
+  right.position.set(12.8, -0.05, 1.6);
   group.add(right);
 
   group.traverse((obj) => {

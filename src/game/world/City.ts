@@ -277,9 +277,9 @@ export const CROSS_ZS = [-488, -336, -180, -12, 128, 264, 412];
 // The international airport sits on the far east coast, well past the last row
 // of east-bank buildings, with open desert between the city edge and the
 // perimeter fence. Nothing else may be generated inside this circle.
-export const AIRPORT_X = 700;
+export const AIRPORT_X = 810;
 export const AIRPORT_Z = -200;
-export const AIRPORT_R = 100;
+export const AIRPORT_R = 260;
 /** Where the access road meets the perimeter: the north-west corner. */
 export const AIRPORT_GATE_ANGLE = Math.PI * 1.25;
 /** The cross street the airport access road branches off, at the east city edge. */
@@ -1930,8 +1930,8 @@ export function createCity(): City {
   westDistrictGround.receiveShadow = true;
   group.add(westDistrictGround);
   const eastGroundMinX = RIVER_MAX_X;
-  // Past the nominal world edge so the airport apron (out to x=660) still
-  // stands on solid ground instead of thin air over the ocean.
+  // Past the nominal world edge so the airport apron still stands on solid
+  // ground instead of thin air over the water.
   const eastGroundMaxX = Math.max(WORLD_HALF_X + GROUND_EXTRA, AIRPORT_X + AIRPORT_R + 6);
   const eastGroundMinZ = -half - GROUND_EXTRA;
   const eastGroundMaxZ = half + GROUND_EXTRA;
@@ -2198,15 +2198,18 @@ export function createCity(): City {
 
   const mountainColors = [0x776044, 0x806848, 0x8c704a, 0x6e5a43];
   const mountainSites: Array<{ x: number; z: number; radius: number; height: number }> = [
-    { x: 700, z: -360, radius: 48, height: 45 },
-    { x: 830, z: -320, radius: 66, height: 61 },
-    { x: 850, z: -410, radius: 74, height: 72 },
-    { x: 955, z: -220, radius: 43, height: 40 },
+    // The northern band sits clear of the airport circle: these six used to
+    // stand where the enlarged perimeter now is, so they were pushed to the
+    // open desert south of the field.
+    { x: 700, z: -535, radius: 48, height: 45 },
+    { x: 830, z: -545, radius: 66, height: 61 },
+    { x: 960, z: -530, radius: 74, height: 72 },
+    { x: 1060, z: -555, radius: 43, height: 40 },
     { x: 1110, z: -405, radius: 82, height: 78 },
     { x: 1200, z: -180, radius: 58, height: 53 },
-    { x: 710, z: 35, radius: 55, height: 47 },
+    { x: 620, z: -495, radius: 55, height: 47 },
     { x: 795, z: 180, radius: 77, height: 70 },
-    { x: 935, z: 75, radius: 60, height: 56 },
+    { x: 1180, z: -500, radius: 60, height: 56 },
     { x: 1080, z: 210, radius: 88, height: 84 },
     { x: 1200, z: 35, radius: 65, height: 60 },
     { x: 730, z: 510, radius: 52, height: 43 },
@@ -2253,6 +2256,8 @@ export function createCity(): City {
     const x = WORLD_HALF_X + GROUND_EXTRA + 35 + rnd() *
       (DESERT_HIGHWAY_END_X - WORLD_HALF_X - GROUND_EXTRA - 70);
     const z = -half - GROUND_EXTRA + 40 + rnd() * (DESERT_HIGHWAY_Z + half + GROUND_EXTRA - 110);
+    // The apron is a paved field, not a sand pit: no dunes on the tarmac.
+    if (Math.hypot(x - AIRPORT_X, z - AIRPORT_Z) < AIRPORT_R + 55) continue;
     const dune = new THREE.Mesh(
       new THREE.SphereGeometry(1, 8, 5),
       new THREE.MeshStandardMaterial({
@@ -4191,7 +4196,9 @@ export function createCity(): City {
     const apz = AIRPORT_Z;
     const apr = AIRPORT_R;
     const fenceY = 2.6;
-    const fenceSegs = 72;
+    // Panels stay about 9 m long whatever the perimeter length, so the 260 m
+    // ring does not turn into 72 giant sheets.
+    const fenceSegs = 184;
     const postHeight = 3.4;
     // Two panels of the ring are left open for the access road gate. The gap is
     // centred on the gate angle so the road meets the fence right in the middle.
@@ -4199,7 +4206,25 @@ export function createCity(): City {
     const gateSegIndex =
       Math.round((AIRPORT_GATE_ANGLE / (Math.PI * 2)) * fenceSegs) - Math.floor(gateSegs / 2);
 
-    box(0x9aa0a6, 0.9, apr * 2, 0.15, apr * 2, apx, -0.02, apz, { cast: false });
+    // The apron follows the fence: a square pad would hang 100 m outside the
+    // circular perimeter at each diagonal corner. Its own material (rather
+    // than the shared cached one) carries a depth bias so it never flickers
+    // against the ground tile underneath.
+    const apronGeometry = new THREE.CircleGeometry(apr - 1, 96);
+    apronGeometry.rotateX(-Math.PI / 2);
+    const apronMaterial = new THREE.MeshStandardMaterial({
+      color: 0x9aa0a6,
+      roughness: 0.9,
+      metalness: 0,
+      flatShading: true,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2
+    });
+    const apron = new THREE.Mesh(apronGeometry, apronMaterial);
+    apron.position.set(apx, 0, apz);
+    apron.receiveShadow = true;
+    group.add(apron);
     contactShadow(apr * 2 + 4, apr * 2 + 4, apx, apz, 0.02);
 
     // The chain-link sheeting merges into one mesh; posts and rails stay in
@@ -4291,58 +4316,79 @@ export function createCity(): City {
     }
 
     // ------------------------------------------------------------------ Runway & Markings
-    // Long enough to look the part but short enough to stay inside the fence:
-    // at 220 the strip poked through both fence lines and its collider walled
-    // the east half of the field off from the west half.
-    const rwLen = 170;
-    const rwW = 42;
+    // Long enough to feel like a real runway but short enough that both ends
+    // stay inside the 260 m perimeter (at 600 the strip poked through the
+    // fence at both ends).
+    const rwLen = 470;
+    const rwW = 80;
     box(0x45484d, 0.9, rwW, 0.2, rwLen, apx, 0.1, apz, { cast: false });
-    box(0x33363a, 0.9, rwW + 4, 0.12, rwLen + 4, apx, 0.08, apz, { cast: false });
+    box(0x33363a, 0.9, rwW + 6, 0.12, rwLen + 6, apx, 0.08, apz, { cast: false });
 
     // Centerline dashes
-    for (let i = -rwLen / 2 + 16; i < rwLen / 2 - 16; i += 16) {
-      box(0xf0e6cf, 0.9, 2.6, 0.08, 8, apx, 0.16, apz + i, { cast: false });
+    for (let i = -rwLen / 2 + 20; i < rwLen / 2 - 20; i += 24) {
+      box(0xf0e6cf, 0.9, 3.2, 0.08, 10, apx, 0.16, apz + i, { cast: false });
     }
 
     // Threshold edge lights
-    for (let i = -rwLen / 2 + 8; i <= rwLen / 2 - 8; i += 14) {
+    for (let i = -rwLen / 2 + 12; i <= rwLen / 2 - 12; i += 18) {
       for (const side of [-1, 1]) {
-        box(0xfff1c4, 0.4, 0.2, 0.2, 0.2, apx + side * (rwW / 2 + 1.4), 0.38, apz + i, { cast: false });
+        box(0xfff1c4, 0.4, 0.25, 0.25, 0.25, apx + side * (rwW / 2 + 1.6), 0.38, apz + i, { cast: false });
       }
     }
 
     // Runway end threshold bars ("09" & "27")
-    for (const tZ of [-rwLen / 2 + 14, rwLen / 2 - 14]) {
-      for (let s = -14; s <= 14; s += 4) {
-        box(0xffffff, 0.9, 1.8, 0.05, 10, apx + s, 0.17, apz + tZ, { cast: false });
+    for (const tZ of [-rwLen / 2 + 16, rwLen / 2 - 16]) {
+      for (let s = -18; s <= 18; s += 5) {
+        box(0xffffff, 0.9, 2.2, 0.05, 12, apx + s, 0.17, apz + tZ, { cast: false });
       }
     }
     // "09" & "27" designation markings
-    box(0xffffff, 0.9, 6, 0.05, 1.6, apx - 8, 0.18, apz - rwLen / 2 + 32, { cast: false });
-    box(0xffffff, 0.9, 1.6, 0.05, 8, apx - 10, 0.18, apz - rwLen / 2 + 32, { cast: false });
-    box(0xffffff, 0.9, 1.6, 0.05, 8, apx - 6, 0.18, apz - rwLen / 2 + 32, { cast: false });
-    box(0xffffff, 0.9, 6, 0.05, 1.6, apx + 8, 0.18, apz - rwLen / 2 + 32, { cast: false });
+    box(0xffffff, 0.9, 7, 0.05, 2, apx - 10, 0.18, apz - rwLen / 2 + 40, { cast: false });
+    box(0xffffff, 0.9, 1.8, 0.05, 10, apx - 12, 0.18, apz - rwLen / 2 + 40, { cast: false });
+    box(0xffffff, 0.9, 1.8, 0.05, 10, apx - 8, 0.18, apz - rwLen / 2 + 40, { cast: false });
+    box(0xffffff, 0.9, 7, 0.05, 2, apx + 10, 0.18, apz - rwLen / 2 + 40, { cast: false });
+    box(0xffffff, 0.9, 1.8, 0.05, 10, apx + 8, 0.18, apz - rwLen / 2 + 40, { cast: false });
+    box(0xffffff, 0.9, 1.8, 0.05, 10, apx + 12, 0.18, apz - rwLen / 2 + 40, { cast: false });
 
-    colliders.push({
-      minX: apx - rwW / 2 - 2,
-      maxX: apx + rwW / 2 + 2,
-      minZ: apz - rwLen / 2 - 2,
-      maxZ: apz + rwLen / 2 + 2
-    });
+    // No collider: tarmac is drivable ground. A solid box here walled the
+    // field in half and made the aircraft parked on it unreachable.
 
     // ------------------------------------------------------------------ Taxiway Guidance Paths
-    box(0x6d6557, 0.9, 20, 0.18, 110, apx - 55, 0.12, apz - 30, { cast: false });
-    box(0x6d6557, 0.9, 20, 0.18, 110, apx + 55, 0.12, apz + 30, { cast: false });
+    // Taxiways connect the runway to all airport facilities with no blockers.
+    const taxys = [
+      { x: apx - 90,  z: apz - 60, len: 300 },
+      { x: apx - 100, z: apz - 150, len: 320 },
+      { x: apx + 20,  z: apz - 120, len: 280 },
+      { x: apx + 80,  z: apz - 40,  len: 200 },
+      { x: apx + 130, z: apz - 200, len: 250 },
+      { x: apx + 60,  z: apz - 40,  len: 180 }
+    ];
+    for (const t of taxys) {
+      // Trim each strip to the perimeter so no yellow line runs out under the
+      // fence into the desert.
+      const fenceReach = Math.sqrt(Math.max(0, apr * apr - (t.x - apx) * (t.x - apx))) - 5;
+      const len = Math.min(t.len, fenceReach * 2);
+      if (len < 12) continue;
+      box(0x6d6557, 0.9, 28, 0.18, len, t.x, 0.12, t.z, { cast: false });
+      box(0xf5cd2e, 0.9, 1.4, 0.04, len, t.x, 0.17, t.z, { cast: false });
+    }
+    // Cross taxiways
+    const cx = [apx - 90, apx - 10, apx + 10, apx + 60];
+    const cz = [apz - 60, apz - 120, apz - 180, apz + 10, apz - 220];
+    for (const x of cx) {
+      for (const z of cz) {
+        if (Math.abs(x - apx) + Math.abs(z - apz) < 200) continue;
+        box(0xf5cd2e, 0.9, 1.4, 0.04, 1.4, x, 0.17, z, { cast: false });
+      }
+    }
 
-    box(0xf5cd2e, 0.9, 1.2, 0.04, 110, apx - 55, 0.17, apz - 30, { cast: false });
-    box(0xf5cd2e, 0.9, 1.2, 0.04, 110, apx + 55, 0.17, apz + 30, { cast: false });
-    box(0xf5cd2e, 0.9, 90, 0.04, 1.2, apx, 0.17, apz, { cast: false });
-
-    // ------------------------------------------------------------------ Upgraded International Terminal
+    // ------------------------------------------------------------------ Terminal 2: East Terminal
     {
-      const tw = 64, td = 36, th = 16;
-      const tx = apx - 35;
-      const tz = apz + 10;
+      const tw = 120, td = 48, th = 22;
+      // East of the runway strip (x = apx ± 40) so the terminal does not stand
+      // on the active runway, still inside the perimeter.
+      const tx = apx + 130;
+      const tz = apz - 130;
 
       // Base terminal concourse
       addBuilding(colliders, buildings, tx, tz, {
@@ -4352,30 +4398,30 @@ export function createCity(): City {
 
       // Glass Curtain Facade (Front facing apron)
       box(0x3a7bd5, 0.2, tw - 4, th - 2, 0.6, tx, th / 2, tz + td / 2 + 0.3);
-      for (let m = -tw / 2 + 6; m <= tw / 2 - 6; m += 8) {
+      for (let m = -tw / 2 + 8; m <= tw / 2 - 8; m += 10) {
         box(0x1a232a, 0.8, 0.4, th, 0.8, tx + m, th / 2, tz + td / 2 + 0.4);
       }
 
       // Aerodynamic sweeping roof wing canopy
-      box(0xdedede, 0.7, tw + 8, 1.2, td + 10, tx, th + 0.6, tz);
-      box(0x1a232a, 0.9, tw + 4, 0.4, td + 6, tx, th + 1.2, tz);
+      box(0xdedede, 0.7, tw + 12, 1.4, td + 14, tx, th + 0.8, tz);
+      box(0x1a232a, 0.9, tw + 6, 0.5, td + 8, tx, th + 1.4, tz);
 
       // Departures Elevated Drop-off Flyover Ramp
-      box(0x4d5258, 0.9, 86, 0.4, 16, tx + 15, 5.5, tz + td / 2 + 14);
-      box(0x3d4248, 0.9, 86, 5.5, 0.4, tx + 15, 2.75, tz + td / 2 + 22);
-      for (let p = -30; p <= 40; p += 20) {
-        box(0x8a929a, 0.8, 2.4, 5.5, 2.4, tx + 15 + p, 2.75, tz + td / 2 + 14);
+      box(0x4d5258, 0.9, 120, 0.5, 20, tx + 20, 6.5, tz + td / 2 + 18);
+      box(0x3d4248, 0.9, 120, 7, 0.4, tx + 20, 3.2, tz + td / 2 + 26);
+      for (let p = -45; p <= 60; p += 25) {
+        box(0x8a929a, 0.8, 2.8, 7, 2.8, tx + 20 + p, 3.2, tz + td / 2 + 16);
       }
 
       // Signs & Flight Schedule Board
-      addSign(group, '9JA INTERNATIONAL TERMINAL', '#0d1b2a', '#ffd24a', tx, th - 1.8, tz + td / 2 + 0.8, 0, 13);
-      addSign(group, 'DEPARTURES ➔ LEVEL 2', '#1b263b', '#48cae4', tx + 15, 7.2, tz + td / 2 + 22, 0, 9);
-      addSign(group, 'FLIGHTS: ABUJA [BOARDING]  |  LONDON [ON TIME]', '#0a192f', '#00f5d4', tx, 3.2, tz + td / 2 + 0.8, 0, 12);
+      addSign(group, '9JA INTERNATIONAL TERMINAL', '#0d1b2a', '#ffd24a', tx, th - 2.6, tz + td / 2 + 0.4, 0, 16);
+      addSign(group, 'DEPARTURES LEVEL 2', '#1b263b', '#48cae4', tx + 25, th - 4.2, tz + td / 2 + 0.4, 0, 12);
+      addSign(group, 'FLIGHTS: ABUJA [BOARDING]  |  LONDON [ON TIME]', '#0a192f', '#00f5d4', tx, 4.0, tz + td / 2 + 0.4, 0, 14);
 
       // 3D Telescopic Boarding Jetways
       for (let i = 0; i < 3; i += 1) {
         const jz = tz - 12 + i * 12;
-        const jx = tx - tw / 2 - 14;
+        const jx = tx - tw / 2 - 10;
         box(0x5a6b78, 0.8, 24, 3.8, 3.8, jx, 4.8, jz, { ry: -Math.PI / 2 });
         box(0x7fb3d5, 0.3, 22, 1.2, 4.0, jx, 5.2, jz, { ry: -Math.PI / 2, cast: false });
         box(0x1a1a1a, 0.9, 2.8, 4.2, 4.2, jx - 11, 4.8, jz);
@@ -4392,47 +4438,72 @@ export function createCity(): City {
       box(0xf0f0f0, 0.7, 3.6, 3.6, 3.6, tx + 18, th + 2.8, tz - 6);
       addEmissiveLight(group, 0.3, 0.8, 0.3, 0xff1100, 0xff0000, 3.0, tx, th + 3.0, tz);
     }
-      // ------------------------------------------------------------------ Giant Plane Icon on Terminal Roof
-      // A massive airplane silhouette on top of the terminal so the airport
-      // is unmistakable from anywhere on the map.
-      {
-        const piTx = apx - 35;
-        const piTz = apz + 10;
-        const piTh = 16;
-        const piY = piTh + 6;
-        box(0xffffff, 0.9, 18, 1.6, 2.6, piTx, piY + 0.8, piTz, { ry: 0 });
-        box(0xe8e8e8, 0.8, 2.6, 1.2, 2.0, piTx + 11, piY + 0.8, piTz, { ry: 0 });
-        box(0x1a232a, 0.8, 2.2, 0.7, 42, piTx, piY, piTz - 22, { ry: 0 });
-        box(0x1a232a, 0.8, 2.2, 0.7, 42, piTx, piY, piTz + 22, { ry: 0 });
-        box(0x1a232a, 0.8, 0.7, 1.2, 0.9, piTx, piY + 0.5, piTz - 21.5, { ry: 0 });
-        box(0x1a232a, 0.8, 0.7, 1.2, 0.9, piTx, piY + 0.5, piTz + 21.5, { ry: 0 });
-        box(0xd4a12f, 0.8, 1.2, 3.4, 1.4, piTx - 7, piY + 2.5, piTz, { ry: 0 });
-        box(0x1a232a, 0.8, 0.7, 0.5, 10, piTx - 6, piY + 0.6, piTz, { ry: 0 });
-        box(0x8a929a, 0.6, 4, 0.4, 1.2, piTx + 9, piY + 1.0, piTz + 0.6, { ry: 0 });
+    // ------------------------------------------------------------------ Jet Garage (Hangar) with Catwalk
+    // A large arcade-style hangar where aircraft are parked on a rotating carousel.
+    {
+      const gW = 120, gD = 90, gH = 24;
+      // North-west apron: the old spot (apz - 280) fell outside the enlarged
+      // perimeter. This one clears the runway, the gate road and the fence.
+      const gX = apx - 110;
+      const gZ = apz + 40;
+
+      // Garage roof and walls
+      box(0x8a929a, 0.7, gW, gH, gD, gX, gH / 2, gZ);
+      box(0x5a6b78, 0.7, gW + 2, gH - 4, gD + 2, gX, (gH - 4) / 2, gZ);
+      box(0x5a6b78, 0.7, 1.2, gH - 4, gD + 2, gX, (gH - 4) / 2, gZ);
+
+      // Garage door (arched roof)
+      box(0x4a525a, 0.8, gW, 0.6, 1.8, gX, gH + 0.3, gZ);
+      box(0x1a1c1e, 0.9, gW - 4, 4.6, 0.2, gX, gH + 2.6, gZ, { cast: false });
+
+      // Interior catwalks (walkways for inspection)
+      box(0x3a3d42, 0.9, 12, 0.4, 1.2, gX + 10, 2, gZ - 10);
+      box(0x3a3d42, 0.9, 12, 0.4, 1.2, gX - 10, 2, gZ + 10);
+      box(0x3a3d42, 0.9, 12, 0.4, 1.2, gX + 30, 2, gZ + 30);
+      box(0x3a3d42, 0.9, 12, 0.4, 1.2, gX - 30, 2, gZ - 30);
+
+      // Rotating aircraft carousel
+      const carouselRadius = 20;
+      const carouselCenterX = gX;
+      const carouselCenterZ = gZ + 10;
+      const numAircraft = 4;
+      for (let i = 0; i < numAircraft; i += 1) {
+        const angle = (i / numAircraft) * Math.PI * 2;
+        const cx = carouselCenterX + Math.cos(angle) * carouselRadius;
+        const cz = carouselCenterZ + Math.sin(angle) * carouselRadius;
+
+        // Aircraft body
+        box(0x2c3540, 0.9, 34, 2.4, 6.6, cx, 1.3, cz, { ry: 0 });
+        box(0x2c3540, 0.9, 32, 0.6, 6.2, cx, 2.4, cz, { ry: 0 });
+        box(0x3a7bd5, 0.4, 6, 0.4, 1.4, cx - 12, 3.0, cz + 2.2, { ry: 0 });
+        box(0x3a7bd5, 0.4, 6, 0.4, 1.4, cx - 12, 3.0, cz - 2.2, { ry: 0 });
+        box(0xd4a12f, 0.8, 3.4, 2.0, 1.4, cx - 25, 1.6, cz, { ry: 0 });
+
+        // Add to colliders if needed
+        colliders.push({
+          minX: cx - 17, maxX: cx + 17,
+          minZ: cz - 3.4, maxZ: cz + 3.4
+        });
       }
 
-    // ------------------------------------------------------------------ Parked Airliners on Apron
-    {
-      const pz = apz - 45;
-      box(0x2c3540, 0.9, 34, 2.4, 6.6, apx - 45, 1.3, pz, { ry: 0 });
-      box(0x1a232a, 0.8, 32, 0.6, 6.2, apx - 45, 2.4, pz, { ry: 0 });
-      box(0x3a7bd5, 0.4, 6, 0.4, 1.4, apx - 45 + 12, 3.0, pz + 2.2, { ry: 0 });
-      box(0x3a7bd5, 0.4, 6, 0.4, 1.4, apx - 45 + 12, 3.0, pz - 2.2, { ry: 0 });
-      box(0xd4a12f, 0.8, 3.4, 2.0, 1.4, apx - 45 - 13, 1.6, pz, { ry: 0 });
-      colliders.push({ minX: apx - 45 - 17, maxX: apx - 45 + 17, minZ: pz - 3.4, maxZ: pz + 3.4 });
+      // Carousel center support
+      box(0x7b8895, 0.9, 0.4, 4, 0.4, gX, 2, gZ + 10);
 
-      box(0x2c3540, 0.9, 34, 2.4, 6.6, apx + 45, 1.3, pz, { ry: Math.PI });
-      box(0x1a232a, 0.8, 32, 0.6, 6.2, apx + 45, 2.4, pz, { ry: Math.PI });
-      box(0x3a7bd5, 0.4, 6, 0.4, 1.4, apx + 45 - 12, 3.0, pz + 2.2, { ry: Math.PI });
-      box(0x3a7bd5, 0.4, 6, 0.4, 1.4, apx + 45 - 12, 3.0, pz - 2.2, { ry: Math.PI });
-      box(0xd4a12f, 0.8, 3.4, 2.0, 1.4, apx + 45 + 13, 1.6, pz, { ry: Math.PI });
-      colliders.push({ minX: apx + 45 - 17, maxX: apx + 45 + 17, minZ: pz - 3.4, maxZ: pz + 3.4 });
+      // Catwalk railings
+      for (const offset of [-6, 6]) {
+        box(0x1a232a, 0.9, 2, 0.05, 0.8, gX + offset * 4, 2.1, gZ - 10 + offset * 0.8, { cast: false });
+      }
+
+      // Aircraft turntable (the rotating platform)
+      box(0x4a525a, 0.9, carouselRadius * 2 + 6, 0.2, 14, gX, 0.1, gZ + 10, { cast: false });
     }
 
-    // ------------------------------------------------------------------ 360° Control Tower with Rotating Radar
+    // ------------------------------------------------------------------ Control Tower with Rotating Radar
     {
       const tw = 12, th = 34;
-      const tX = apx + 22, tZ = apz - 42;
+      // Kept off the perimeter: (apx + 200, apz - 200) was 283 m from centre,
+      // i.e. outside a 260 m fence.
+      const tX = apx + 165, tZ = apz - 175;
 
       box(0xcdd6df, 0.8, tw, th, tw, tX, th / 2, tZ);
       box(0x7b8895, 0.9, tw + 2, th - 4, 1.2, tX, (th - 4) / 2, tZ);
@@ -4477,7 +4548,7 @@ export function createCity(): City {
       addEmissiveLight(group, 0.4, 1.0, 0.4, 0xff0000, 0xff0000, 4.0, tX, th + 9.2, tZ);
 
       // Dynamic Windsock Pole
-      windsockGroup.position.set(tX - 10, 0, tZ + 15);
+      windsockGroup.position.set(tX - 10, 0, tZ - 12);
       const wsPole = new THREE.Mesh(
         new THREE.CylinderGeometry(0.1, 0.14, 8, 8),
         new THREE.MeshStandardMaterial({ color: 0x4a525a, roughness: 0.7 })
@@ -4499,7 +4570,7 @@ export function createCity(): City {
     // ------------------------------------------------------------------ Arch-Roof Hangars & Aviation Fuel Depot
     {
       const hw = 28, hd = 22, hh = 11;
-      for (const hx of [apx + 40, apx + 76]) {
+      for (const hx of [apx + 70, apx + 100, apx + 130]) {
         box(0x8a929a, 0.7, hw, hh, hd, hx, hh / 2, apz + 62);
         box(0x4a525a, 0.9, hw + 1, 0.6, hd + 1, hx, hh + 0.3, apz + 62);
         box(0x1a1c1e, 0.9, hw - 4, hh - 2, 0.2, hx, (hh - 2) / 2, apz + 62 - hd / 2 + 0.1, { cast: false });
@@ -4513,7 +4584,7 @@ export function createCity(): City {
       }
 
       // Aviation Fuel Depot
-      const fX = apx + 105, fZ = apz + 55;
+      const fX = apx + 180, fZ = apz + 30;
       box(0x9aa0a6, 0.9, 24, 1.4, 20, fX, 0.7, fZ);
       box(0x2b2d30, 0.9, 22, 1.2, 18, fX, 0.8, fZ, { cast: false });
       for (const tOff of [-5.5, 5.5]) {
@@ -4539,17 +4610,17 @@ export function createCity(): City {
       box(0xca6702, 0.7, 3.4, 2.2, 7.2, fX - 16, 1.8, fZ - 2);
     }
 
-    // Baggage carts & service tugs
+    // Baggage carts on the east apron, clear of the runway strip.
     for (let i = 0; i < 4; i += 1) {
-      const gx = apx - 18 + i * 9;
-      const gz = apz + 42;
+      const gx = apx + 95 + i * 7;
+      const gz = apz + 20;
       box(0xd4a12f, 0.9, 2.8, 1.8, 4.6, gx, 1, gz);
       box(0x3b4146, 0.9, 2.4, 0.7, 4.2, gx, 1.35, gz);
       colliders.push({ minX: gx - 1.5, maxX: gx + 1.5, minZ: gz - 2.4, maxZ: gz + 2.4 });
     }
 
     // ------------------------------------------------------------------ Helipad
-    const hx = apx + 60, hz = apz + 40;
+    const hx = apx + 80, hz = apz + 100;
     box(0x3a3d42, 0.9, 22, 0.15, 22, hx, 0.08, hz, { cast: false });
     for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
       box(0xf5cd2e, 0.9, 1.8, 0.02, 0.4, hx + Math.cos(a) * 9, 0.16, hz + Math.sin(a) * 9, { ry: -a, cast: false });
@@ -4578,6 +4649,7 @@ export function createCity(): City {
     const accessMidZ = (accessStartZ + accessEndZ) / 2;
     const accessHalf = 8;
     box(0x3f4246, 1, accessLen, 0.2, accessHalf * 2, accessMidX, -0.1, accessMidZ, { ry: accessYaw });
+
     // Double centre line and edge lines, laid along the same heading.
     for (const off of [-0.22, 0.22]) {
       box(
@@ -4638,6 +4710,25 @@ export function createCity(): City {
       gateArmGroup.add(stripe);
     }
     group.add(gateArmGroup);
+
+    // Interior airport road: continues through the gate into the apron,
+    // curves toward the terminal so the entrance feels like a real road.
+    const inRoadStartX = gateX + inwardX * 10;
+    const inRoadStartZ = gateZ + inwardZ * 10;
+    const inRoadEndX = apx + 80;
+    const inRoadEndZ = apz + 30;
+    const inRoadDx = inRoadEndX - inRoadStartX;
+    const inRoadDz = inRoadEndZ - inRoadStartZ;
+    const inRoadLen2 = Math.hypot(inRoadDx, inRoadDz);
+    const inRoadYaw = -Math.atan2(inRoadDz, inRoadDx);
+    const inRoadMidX = (inRoadStartX + inRoadEndX) / 2;
+    const inRoadMidZ = (inRoadStartZ + inRoadEndZ) / 2;
+    box(0x3f4246, 1, inRoadLen2, 0.2, 14, inRoadMidX, -0.07, inRoadMidZ, { ry: inRoadYaw });
+    for (const off of [-6.5, 6.5]) {
+      box(0xe8e2cf, 0.95, inRoadLen2, 0.012, 0.14,
+        inRoadMidX - inRoadDz * off / inRoadLen2 * 2, 0.045, inRoadMidZ + inRoadDx * off / inRoadLen2 * 2,
+        { ry: inRoadYaw });
+    }
 
     const boothX = gateX + inwardX * 1.2 + tangentX * 3.8;
     const boothZ = gateZ + inwardZ * 1.2 + tangentZ * 3.8;

@@ -475,7 +475,8 @@ export class Game {
     // Spawn Airport Aircraft Rigs — parked relative to the field centre so a
     // relocated airport drags its aircraft along with it.
     const jet = createShamalJet(0x1e3a60);
-    jet.group.position.set(AIRPORT_X - 80, 0.1, AIRPORT_Z + 10);
+    // West apron, clear of the hangar and the runway strip.
+    jet.group.position.set(AIRPORT_X - 80, 0.1, AIRPORT_Z - 30);
     jet.group.rotation.y = Math.PI / 2;
     ensureRigHealth(jet);
     jet.group.userData.saveId = 'airport-shamal-jet';
@@ -484,7 +485,8 @@ export class Game {
     this.drivableVehicles.push(jet);
 
     const chopper = createMaverickHelicopter(0x2d4838);
-    chopper.group.position.set(AIRPORT_X + 60, 0.1, AIRPORT_Z + 40);
+    // Parked on the helipad.
+    chopper.group.position.set(AIRPORT_X + 80, 0.1, AIRPORT_Z + 100);
     chopper.group.rotation.y = 0;
     ensureRigHealth(chopper);
     chopper.group.userData.saveId = 'airport-maverick-chopper';
@@ -493,8 +495,8 @@ export class Game {
     this.drivableVehicles.push(chopper);
 
     const stuntPlane = createStuntPlane(0xd03525);
-    // Off the hangar floor and out on the open apron, clear of the helipad.
-    stuntPlane.group.position.set(AIRPORT_X + 30, 0.1, AIRPORT_Z + 30);
+    // Open apron between the terminal and the hangars, off the runway.
+    stuntPlane.group.position.set(AIRPORT_X + 60, 0.1, AIRPORT_Z - 70);
     stuntPlane.group.rotation.y = -Math.PI / 2;
     ensureRigHealth(stuntPlane);
     stuntPlane.group.userData.saveId = 'airport-stunt-plane';
@@ -1466,12 +1468,27 @@ export class Game {
       }
 
       const liftPower = aircraft.rotorSpeed / 26;
-      if (climb) aircraft.verticalSpeed = Math.min(14, aircraft.verticalSpeed + 12 * liftPower * dt);
-      else if (dive) aircraft.verticalSpeed = Math.max(-12, aircraft.verticalSpeed - 10 * dt);
-      else {
-        aircraft.verticalSpeed *= Math.max(0, 1 - dt * 2.2);
+      // Hover at mid rotor speed; climb/dive increases/decreases vertical speed
+      const hoverSpeed = 24;
+      if (climb && !dive) {
+        // Climbing: increase vertical speed smoothly
+        aircraft.verticalSpeed += 14 * liftPower * dt;
+      } else if (dive && !climb) {
+        // Diving: decrease vertical speed (descend)
+        aircraft.verticalSpeed -= 14 * dt;
+      } else {
+        // Auto-hold altitude using rotor speed error PD controller
+        const hoverDiff = aircraft.rotorSpeed - hoverSpeed;
+        // Correction factor based on rotor speed error
+        const correction = hoverDiff * 0.45;
+        aircraft.verticalSpeed += correction * dt;
+        // Strong damping to prevent oscillation
+        aircraft.verticalSpeed *= Math.max(0, 1 - dt * 2.8);
+        // Clamp vertical speed
+        aircraft.verticalSpeed = Math.max(-22, Math.min(22, aircraft.verticalSpeed));
       }
 
+      // GTA-style: stick forward (moveY < 0) = nose down = dive; stick back = nose up = climb
       const targetPitch = -pitchY * 0.45;
       const targetRoll = steerX * 0.45;
       aircraft.pitch += (targetPitch - aircraft.pitch) * Math.min(1.0, dt * 4.0);
@@ -1502,22 +1519,25 @@ export class Game {
       const isAirborne = aircraft.altitude > 0.4 || (airspeed > 12 && climb);
 
       if (isAirborne) {
-        const targetPitch = dive ? 0.42 : climb ? -0.42 : -pitchY * 0.45;
-        const targetRoll = steerX * 0.55;
-        aircraft.pitch += (targetPitch - aircraft.pitch) * Math.min(1.0, dt * 3.5);
-        aircraft.roll += (targetRoll - aircraft.roll) * Math.min(1.0, dt * 3.5);
-
-        const bankYaw = aircraft.roll * 1.2;
+        const targetPitch = dive ? 0.5 : climb ? -0.5 : pitchY * 0.55;
+        aircraft.pitch += (targetPitch - aircraft.pitch) * Math.min(1.0, dt * 5.5);
+        aircraft.roll += (-steerX * 0.6 - aircraft.roll * 0.2) * Math.min(1.0, dt * 5.0);
+        const bankYaw = aircraft.roll * 1.4;
         this.carYaw += bankYaw * dt;
-
-        const lift = (airspeed / 20) * Math.cos(aircraft.roll);
-        const climbFactor = -Math.sin(aircraft.pitch) * airspeed;
-        aircraft.verticalSpeed = climbFactor + (lift - 1.0) * 8;
+        const liftFactor = -Math.sin(aircraft.pitch) * Math.min(airspeed, 35) * 0.8;
+        const dragForce = (airspeed > 0.5) ? airspeed * 0.05 : 0;
+        const thrust = gas ? 18 : 0;
+        const gravity = -12;
+        aircraft.verticalSpeed = liftFactor + gravity + thrust * 0.3 - dragForce;
+        if (aircraft.altitude < 5) {
+          aircraft.verticalSpeed *= 1.2;
+        }
       } else {
-        aircraft.pitch += (0 - aircraft.pitch) * Math.min(1.0, dt * 6.0);
-        aircraft.roll += (0 - aircraft.roll) * Math.min(1.0, dt * 6.0);
-        aircraft.verticalSpeed = 0;
-        this.carYaw += steerX * 1.8 * Math.min(1, airspeed / 8) * dt;
+        aircraft.pitch += (0 - aircraft.pitch) * Math.min(1.0, dt * 8.0);
+        aircraft.roll += (0 - aircraft.roll) * Math.min(1.0, dt * 8.0);
+        const drag = (1.5 + Math.abs(this.carSpeed) * 0.06) * dt;
+        this.carSpeed = Math.abs(this.carSpeed) <= drag ? 0 : this.carSpeed - Math.sign(this.carSpeed) * drag;
+        this.carYaw += steerX * 1.8 * Math.min(1, Math.abs(this.carSpeed) / 8) * dt;
       }
     }
 
