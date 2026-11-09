@@ -789,7 +789,13 @@ function getBlobMaterial(): THREE.MeshBasicMaterial {
       map: getBlobTexture(),
       transparent: true,
       depthWrite: false,
-      opacity: 0.8
+      opacity: 0.8,
+      // These blobs sit only a couple of centimetres above the surface they
+      // darken. At aerial distance that is inside the depth buffer's rounding
+      // error, so bias them forward instead of letting them z-fight in fans.
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -4
     });
   }
   return blobMaterial;
@@ -4225,7 +4231,8 @@ export function createCity(): City {
     apron.position.set(apx, 0, apz);
     apron.receiveShadow = true;
     group.add(apron);
-    contactShadow(apr * 2 + 4, apr * 2 + 4, apx, apz, 0.02);
+    // No contact blob over the whole field: at this size it only added a dark
+    // smudge (and fought the apron in the depth buffer). Buildings keep theirs.
 
     // The chain-link sheeting merges into one mesh; posts and rails stay in
     // the instanced batch alongside the rest of the street furniture.

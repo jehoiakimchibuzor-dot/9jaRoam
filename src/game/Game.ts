@@ -324,7 +324,7 @@ export class Game {
   private mapPinchDistance = 0;
   private mapPinchGesture = false;
   private pinnedWaypoint: THREE.Vector3 | null = null;
-  private dprCap = IS_ANDROID ? 1.0 : 2;
+  private dprCap = IS_ANDROID ? 1.5 : 2;
   private perfTimer = 0;
   private swimming = false;
   private waterWarned = false;
@@ -367,7 +367,11 @@ export class Game {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.16;
 
-    this.camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 480);
+    // A 0.1 near plane only leaves 4,800:1 of depth range at 480 m, which made
+    // the big airport apron z-fight with the ground from the air. The chase
+    // camera never comes closer than ~2 m, so 0.5 costs nothing and buys 5x
+    // the depth precision where it is needed.
+    this.camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.5, 480);
     this.camPos.set(-5.0, 3.65, 27.2);
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(-5.0, 1.6, 22);
@@ -772,10 +776,13 @@ export class Game {
     if (this.perfTimer < 2) return;
     this.perfTimer = 0;
     const dpr = this.renderer.getPixelRatio();
-    const minDpr = IS_ANDROID ? 0.75 : 1;
-    const maxDpr = Math.min(window.devicePixelRatio || 1, IS_ANDROID ? 1.0 : 2);
-    const lowFps = IS_ANDROID ? 45 : 28;
-    const highFps = IS_ANDROID ? 58 : 54;
+    // Never render below CSS resolution on a phone: a sub-1 ratio turns the
+    // whole 3D view into a blurry upscale. The game is CPU-bound at ~35 fps,
+    // so the old 45 fps gate only cost sharpness without buying frames.
+    const minDpr = IS_ANDROID ? 1.0 : 1;
+    const maxDpr = Math.min(window.devicePixelRatio || 1, IS_ANDROID ? 1.5 : 2);
+    const lowFps = IS_ANDROID ? 30 : 28;
+    const highFps = IS_ANDROID ? 55 : 54;
     if (this.fps < lowFps && dpr > minDpr + 0.01) {
       this.dprCap = Math.max(minDpr, dpr - 0.1);
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.dprCap));
