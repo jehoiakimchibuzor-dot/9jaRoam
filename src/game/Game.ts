@@ -293,6 +293,11 @@ export class Game {
   private cameraColliders: Collider[] = [];
   private snapCameraNext = false;
   private camTarget = new THREE.Vector3();
+  // Reused so the camera does not allocate a Vector3 every frame (GC pauses
+  // show up as visible hitches while driving on a phone).
+  private camDesired = new THREE.Vector3();
+  private moveFwd = new THREE.Vector3();
+  private fuelStart = new THREE.Vector3();
 
   private carSpeed = 0;
   private carYaw = Math.PI;
@@ -312,6 +317,7 @@ export class Game {
   private tracers: Tracer[] = [];
   private impacts: Impact[] = [];
   private minimapCtx: CanvasRenderingContext2D | null = null;
+  private minimapDrawnAt = -1;
   private worldMapCtx: CanvasRenderingContext2D | null = null;
   private worldMapElement: HTMLElement | null = null;
   private worldMapOpen = false;
@@ -358,7 +364,13 @@ export class Game {
       canvas,
       antialias: !IS_ANDROID,
       powerPreference: 'high-performance',
-      precision: IS_ANDROID ? 'mediump' : 'highp'
+      // Never compile the world shaders as mediump. With mediump vertex
+      // positions a coordinate like the airport (x ~ 810) only resolves to
+      // about a metre, so whole layers snap past each other while the camera
+      // moves and the ground looks like it is flickering between sand, road
+      // and water. highp costs nothing measurable here because the game is
+      // CPU-bound, not fill-bound.
+      precision: 'highp'
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.dprCap));
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
@@ -982,7 +994,10 @@ export class Game {
     // Drag the world around with your thumb: swipe right to look right, and
     // swipe down to lift the camera and look down (was inverted).
     this.camYaw -= look.x * 0.0045;
-    this.camPitch = clamp(this.camPitch - look.y * 0.0035, -0.12, 0.95);
+    // Cap the pitch well short of straight down. The old 0.95 rad limit let a
+    // single long swipe put the chase camera almost overhead and it stayed
+    // there, which reads as the game suddenly switching to a satellite view.
+    this.camPitch = clamp(this.camPitch - look.y * 0.0035, -0.12, 0.58);
     this.camDist = clamp(this.camDist + zoom, 2.2, 14);
 
     const a = this.input.consumeA();
@@ -1308,7 +1323,7 @@ export class Game {
       this.showToast('OUT OF FUEL');
       this.setHint('Engine stopped · walk to an NNPC station or find another ride');
     }
-    const fuelStartPosition = car.group.position.clone();
+    const fuelStartPosition = this.fuelStart.copy(car.group.position);
     // Dedicated REVERSE button, plus pulling the stick back while on the gas.
     const reverse = state.reverseHeld || (gas && state.moveY > 0.35);
     const steer = Math.abs(state.moveX) > 0.12 ? state.moveX : 0;
@@ -1337,7 +1352,7 @@ export class Game {
       this.camYaw += wrapAngle(behind - this.camYaw) * (1 - Math.exp(-3.4 * dt));
     }
 
-    const fwd = new THREE.Vector3(Math.sin(this.carYaw), 0, Math.cos(this.carYaw));
+    const fwd = this.moveFwd.set(Math.sin(this.carYaw), 0, Math.cos(this.carYaw));
     car.group.position.addScaledVector(fwd, this.carSpeed * dt);
     car.group.rotation.y = this.carYaw;
     this.constrainCarToBridge(car);
@@ -1548,7 +1563,7 @@ export class Game {
       }
     }
 
-    const fwd = new THREE.Vector3(Math.sin(this.carYaw), 0, Math.cos(this.carYaw));
+    const fwd = this.moveFwd.set(Math.sin(this.carYaw), 0, Math.cos(this.carYaw));
     aircraft.group.position.addScaledVector(fwd, this.carSpeed * dt);
 
     aircraft.altitude = Math.max(0, aircraft.altitude + aircraft.verticalSpeed * dt);
@@ -4136,7 +4151,7 @@ export class Game {
     const offX = Math.sin(this.camYaw) * Math.cos(pitch) * dist;
     const offY = Math.sin(pitch) * dist + (driving ? 0.25 : inside ? 0.35 : 0.65);
     const offZ = Math.cos(this.camYaw) * Math.cos(pitch) * dist;
-    const desired = new THREE.Vector3(base.x + offX, Math.max(0.55, baseY + height + offY), base.z + offZ);
+    const desired = this.camDesired.set(base.x + offX, Math.max(0.55, baseY + height + offY), base.z + offZ);
 
     if (inside && this.activeInterior) {
       const room = this.activeInterior;
@@ -4766,6 +4781,11 @@ export class Game {
   private drawMinimap(): void {
     const ctx = this.minimapCtx;
     if (!ctx) return;
+    // Redrawing the whole city into the minimap every frame is wasted work on
+    // a phone (it is hundreds of polygon fills). Ten updates a second is
+    // indistinguishable while driving and removes a real per-frame stall.
+    if (this.elapsed - this.minimapDrawnAt < 0.1) return;
+    this.minimapDrawnAt = this.elapsed;
     const size = 180;
     ctx.clearRect(0, 0, size, size);
     ctx.fillStyle = 'rgba(10, 16, 22, 0.94)';

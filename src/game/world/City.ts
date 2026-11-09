@@ -1936,9 +1936,12 @@ export function createCity(): City {
   westDistrictGround.receiveShadow = true;
   group.add(westDistrictGround);
   const eastGroundMinX = RIVER_MAX_X;
-  // Past the nominal world edge so the airport apron still stands on solid
-  // ground instead of thin air over the water.
-  const eastGroundMaxX = Math.max(WORLD_HALF_X + GROUND_EXTRA, AIRPORT_X + AIRPORT_R + 6);
+  // Stop where the desert plane begins. This used to be extended to
+  // AIRPORT_X + AIRPORT_R so the apron had ground under it, but the desert
+  // plane already covers x >= 660 (including the whole airport). Leaving both
+  // planes at y = -0.04 over the same 400 m band made them z-fight, so the
+  // ground visibly flipped between city dirt and desert sand while moving.
+  const eastGroundMaxX = WORLD_HALF_X + GROUND_EXTRA;
   const eastGroundMinZ = -half - GROUND_EXTRA;
   const eastGroundMaxZ = half + GROUND_EXTRA;
   const subwayOpenings = RAIL_STATIONS.map((station) => ({
