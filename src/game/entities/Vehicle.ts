@@ -271,6 +271,62 @@ function getHeadlightBeamTexture(): THREE.CanvasTexture {
   return texture;
 }
 
+// ------------------------------------------------------------------ decals
+// Painted-on registration/lettering. These are added to the rig *after*
+// finishVehicle has merged the shell, so they keep their own textured material
+// instead of being baked into the vertex-colour batch.
+const decalMaterials = new Map<string, THREE.MeshBasicMaterial>();
+
+function decalMat(text: string, ink: string): THREE.MeshBasicMaterial {
+  const key = `${text}:${ink}`;
+  let material = decalMaterials.get(key);
+  if (!material) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.clearRect(0, 0, 256, 64);
+      ctx.fillStyle = ink;
+      ctx.font = 'bold 46px Arial, Helvetica, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, 128, 34);
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.anisotropy = 4;
+    texture.needsUpdate = true;
+    material = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false
+    });
+    decalMaterials.set(key, material);
+  }
+  return material;
+}
+
+/** Add `text` decals to both flanks of a fuselage. */
+function addRegistration(
+  group: THREE.Group,
+  text: string,
+  ink: string,
+  x: number,
+  y: number,
+  z: number,
+  width: number,
+  height: number
+): void {
+  const material = decalMat(text, ink);
+  for (const side of [-1, 1]) {
+    const decal = new THREE.Mesh(new THREE.PlaneGeometry(width, height), material);
+    decal.position.set(side * x, y, z);
+    decal.rotation.y = side * Math.PI / 2;
+    decal.renderOrder = 1;
+    group.add(decal);
+  }
+}
+
 function getHeadlightBeamMaterial(): THREE.MeshBasicMaterial {
   if (!headlightBeamMaterial) {
     headlightBeamMaterial = new THREE.MeshBasicMaterial({
@@ -1080,86 +1136,190 @@ export function createPoliceCar(): VehicleRig {
   return createSedan(0xe8e8e6, true);
 }
 
-export function createShamalJet(color = 0x224477): VehicleRig {
-  const group = new THREE.Group();
-  const white = 0xe8eaec;
-  const glass = glassMat(0x2a445e);
-  const wheelRadius = 0.38;
-  const length = 14.5;
+/**
+ * A flat, swept, tapered wing plate. `dir` is +1 for the right wing and -1 for
+ * the left, so both wings keep outward-facing normals without negative scaling.
+ */
+function sweptWing(
+  parent: THREE.Object3D,
+  dir: 1 | -1,
+  span: number,
+  rootChord: number,
+  tipChord: number,
+  sweep: number,
+  thickness: number,
+  color: number,
+  y: number,
+  z: number
+): THREE.Mesh {
+  const points: Array<[number, number]> = [
+    [0, -rootChord / 2],
+    [dir * span, -tipChord / 2 + sweep],
+    [dir * span, tipChord / 2 + sweep],
+    [0, rootChord / 2]
+  ];
+  // Reversing the winding for the mirrored wing keeps the face pointing up.
+  if (dir < 0) points.reverse();
+  const shape = new THREE.Shape();
+  shape.moveTo(points[0][0], points[0][1]);
+  for (let i = 1; i < points.length; i += 1) shape.lineTo(points[i][0], points[i][1]);
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false });
+  geo.rotateX(-Math.PI / 2);
+  const mesh = new THREE.Mesh(geo, mat(color, 0.45));
+  mesh.position.set(0, y, z);
+  parent.add(mesh);
+  return mesh;
+}
 
+export function createShamalJet(color = 0x1d5fa8): VehicleRig {
+  const group = new THREE.Group();
+  const white = 0xf0f2f4;
+  const blue = color;
+  const windowColor = 0x18232e;
+  const wheelRadius = 0.4;
+  const length = 16.5;
+
+  // ---------------------------------------------------------------- fuselage
+  // Long low-poly tube, white with a blue belly, like the reference airliner.
   const body = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.1, 1.1, 11, 14),
-    mat(white, 0.45)
+    new THREE.CylinderGeometry(0.95, 0.95, 12.4, 14),
+    mat(white, 0.42)
   );
   body.rotation.x = Math.PI / 2;
-  body.position.set(0, 1.4, 0);
+  body.position.set(0, 1.95, 0);
   group.add(body);
 
-  const nose = new THREE.Mesh(
-    new THREE.ConeGeometry(1.1, 2.8, 14),
-    mat(white, 0.45)
-  );
-  nose.rotation.x = Math.PI / 2;
-  nose.position.set(0, 1.4, 6.9);
-  group.add(nose);
+  // Blue belly fairing: sits just proud of the round fuselage underside.
+  rbox(group, 1.62, 0.72, 11.8, 0.3, blue, 0, 1.32, 0);
 
-  const tail = new THREE.Mesh(
-    new THREE.ConeGeometry(1.1, 3.2, 14),
-    mat(white, 0.45)
+  // Nose: the fuselage tapers into a blunt radome. An airliner nose is rounded,
+  // not a cone — the old cone is what made the whole aircraft look like a
+  // pencil with wings glued on.
+  const noseTaper = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.62, 0.95, 1.75, 14),
+    mat(white, 0.42)
   );
-  tail.rotation.x = -Math.PI / 2;
-  tail.position.set(0, 1.4, -7.1);
-  group.add(tail);
+  noseTaper.rotation.x = Math.PI / 2;
+  noseTaper.position.set(0, 1.95, 7.05);
+  group.add(noseTaper);
+  const radome = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 12), mat(white, 0.45));
+  radome.position.set(0, 1.95, 7.9);
+  radome.scale.set(1, 0.88, 0.95);
+  group.add(radome);
 
-  rbox(group, 12.0, 0.22, 2.8, 0.08, white, 0, 1.25, 0.2, 0.4);
+  const tailCone = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.95, 0.34, 3.6, 14),
+    mat(white, 0.42)
+  );
+  tailCone.rotation.x = -Math.PI / 2;
+  tailCone.position.set(0, 1.95, -8.0);
+  group.add(tailCone);
+
+  // Cockpit visor and side glass, sitting on the crown where the taper starts.
+  rbox(group, 1.3, 0.34, 0.55, 0.08, windowColor, 0, 2.62, 6.25);
   for (const side of [-1, 1]) {
-    rbox(group, 0.22, 1.2, 0.8, 0.06, color, side * 5.95, 1.8, 0.2, 0.4);
+    rbox(group, 0.05, 0.34, 0.85, 0.02, windowColor, side * 0.94, 2.3, 5.55);
   }
-  rbox(group, 4.6, 0.18, 1.6, 0.06, white, 0, 1.5, -6.0, 0.4);
-  const fin = rbox(group, 0.24, 2.8, 2.2, 0.08, color, 0, 2.9, -6.2, 0.4);
-  fin.rotation.x = -0.18;
 
+  // -------------------------------------------------------------------- wings
+  // Swept back, tapering to a short tip. Root at the belly, tip behind the
+  // engines, which is what gives the airliner silhouette instead of a slab.
+  sweptWing(group, 1, 7.2, 3.6, 1.55, 2.0, 0.22, white, 1.62, 0.6);
+  sweptWing(group, -1, 7.2, 3.6, 1.55, 2.0, 0.22, white, 1.62, 0.6);
   for (const side of [-1, 1]) {
-    const engine = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.55, 0.62, 2.4, 12),
-      mat(0x9aa0a6, 0.4, 0.3)
+    // Blue winglet.
+    box(group, 0.14, 1.25, 1.5, blue, side * 7.2, 2.25, -1.4);
+    // Blue root fairing so the wing joins the fuselage cleanly.
+    rbox(group, 1.7, 0.34, 3.0, 0.14, blue, side * 0.95, 1.68, 0.5);
+  }
+
+  // ------------------------------------------------------------------ engines
+  for (const side of [-1, 1]) {
+    const engineZ = -0.55;
+    const nacelle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.55, 0.6, 2.7, 12),
+      mat(white, 0.4)
     );
-    engine.rotation.x = Math.PI / 2;
-    engine.position.set(side * 1.55, 1.85, -2.2);
-    group.add(engine);
-    emissive(group, 0.9, 0.9, 0.08, 0xff7722, 0xffaa44, 2.0, side * 1.55, 1.85, -3.42);
+    nacelle.rotation.x = Math.PI / 2;
+    nacelle.position.set(side * 4.3, 1.06, engineZ);
+    group.add(nacelle);
+    // Blue cowl band and dark intake.
+    const cowl = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.62, 0.62, 0.42, 12),
+      mat(blue, 0.45)
+    );
+    cowl.rotation.x = Math.PI / 2;
+    cowl.position.set(side * 4.3, 1.06, engineZ + 1.15);
+    group.add(cowl);
+    const intake = new THREE.Mesh(
+      new THREE.CircleGeometry(0.5, 12),
+      mat(0x10161c, 0.8)
+    );
+    intake.position.set(side * 4.3, 1.06, engineZ + 1.37);
+    group.add(intake);
+    // Pylon up to the wing.
+    box(group, 0.2, 0.55, 1.2, white, side * 4.3, 1.48, engineZ);
   }
 
+  // --------------------------------------------------------------------- tail
+  // White swept fin carrying the blue globe emblem from the reference.
+  const fin = rbox(group, 0.22, 3.3, 2.7, 0.1, white, 0, 3.55, -7.0);
+  fin.rotation.x = -0.16;
+  rbox(group, 0.24, 0.5, 2.4, 0.06, blue, 0, 5.0, -7.3);
+  sweptWing(group, 1, 5.4, 1.7, 0.9, 0.7, 0.14, white, 2.35, -7.7);
+  sweptWing(group, -1, 5.4, 1.7, 0.9, 0.7, 0.14, white, 2.35, -7.7);
+
+  // Globe emblem on both sides of the fin.
   for (const side of [-1, 1]) {
-    box(group, 0.06, 0.28, 9.5, color, side * 1.08, 1.25, 0.6);
-    box(group, 0.06, 0.38, 3.2, 0x1d2e3d, side * 1.08, 1.7, 4.2).material = glass;
+    const globe = new THREE.Mesh(new THREE.CircleGeometry(0.66, 20), mat(blue, 0.5));
+    globe.rotation.y = side * Math.PI / 2;
+    globe.position.set(side * 0.13, 4.0, -6.55);
+    group.add(globe);
+    const meridian = box(group, 0.04, 0.11, 1.2, white, side * 0.15, 4.0, -6.55);
+    const equator = box(group, 0.04, 1.2, 0.1, white, side * 0.15, 4.0, -6.55);
+    meridian.renderOrder = 1;
+    equator.renderOrder = 1;
   }
-  box(group, 1.6, 0.38, 0.08, 0x1d2e3d, 0, 1.75, 5.7).material = glass;
+
+  // -------------------------------------------------------------- cabin detail
+  for (const side of [-1, 1]) {
+    // Blue cheatline and the passenger window row.
+    box(group, 0.05, 0.16, 11.0, blue, side * 0.965, 1.85, 0);
+    for (let i = 0; i < 10; i += 1) {
+      box(group, 0.05, 0.26, 0.55, windowColor, side * 0.95, 2.28, 4.9 - i * 1.15, 0.3);
+    }
+  }
+
+  // --------------------------------------------------------------------- gear
+  const main = addWheels(
+    group,
+    0.42,
+    [
+      [-1.55, -0.9, false],
+      [1.55, -0.9, false]
+    ],
+    0.24
+  );
+  const noseGear = addWheels(group, 0.32, [[0, 5.3, true]], 0.18);
+  for (const side of [-1, 1]) {
+    box(group, 0.12, 0.7, 0.12, 0x4a5158, side * 1.5, 0.42, -0.9);
+  }
+  box(group, 0.12, 0.6, 0.12, 0x4a5158, 0, 0.38, 5.3);
 
   const driver = buildDriver();
-  driver.position.set(-0.35, 1.35, 4.2);
+  driver.position.set(0, 0.95, 5.6);
   group.add(driver);
-
-  const wheels = addWheels(
-    group,
-    wheelRadius,
-    [
-      [0, 5.2, true],
-      [-1.4, -0.6, false],
-      [1.4, -0.6, false]
-    ],
-    0.2
-  );
 
   return finishVehicle({
     group,
-    steerPivots: wheels.steerPivots,
-    spinners: wheels.spinners,
+    steerPivots: [...noseGear.steerPivots],
+    spinners: [...main.spinners, ...noseGear.spinners],
     wheelRadius,
     length,
-    width: 12.0,
-    centerOfMassY: 1.4,
-    maxSpeed: 42,
+    width: 15.0,
+    centerOfMassY: 1.5,
+    maxSpeed: 52,
     driver,
     kind: 'plane',
     pitch: 0,
@@ -1169,10 +1329,10 @@ export function createShamalJet(color = 0x224477): VehicleRig {
     verticalSpeed: 0,
     access: {
       label: 'JET',
-      entry: new THREE.Vector3(-1.8, 0, 3.5),
-      seat: new THREE.Vector3(-0.35, 0, 4.2),
-      interactionRange: 4.8,
-      cameraHeight: 3.2
+      entry: new THREE.Vector3(-2.6, 0, 4.2),
+      seat: new THREE.Vector3(0, 0, 5.4),
+      interactionRange: 5.6,
+      cameraHeight: 3.6
     }
   });
 }
@@ -1180,88 +1340,181 @@ export function createShamalJet(color = 0x224477): VehicleRig {
 export function createMaverickHelicopter(color = 0x2b4c3f): VehicleRig {
   const group = new THREE.Group();
   const dark = 0x1d2024;
-  const glass = glassMat(0x3a5f7d);
+  const metal = 0x99a1a8;
+  const glass = glassMat(0x2c4a63);
+  const trim = 0xe8e4d8;
   const wheelRadius = 0.28;
   const length = 10.5;
 
-  const cabin = new THREE.Mesh(
-    new RoundedBoxGeometry(2.1, 2.0, 3.8, 3, 0.4),
-    mat(color, 0.5)
+  // ---------------------------------------------------------------- fuselage
+  // A proper helicopter layout: cabin block, a nose that tapers and rounds off
+  // into a glazed cockpit, a narrow tail boom and skids. The old model was a
+  // rounded cube with a cone stuck on the back, which read as a flying box.
+  rbox(group, 1.95, 1.75, 3.2, 0.55, color, 0, 1.45, 0.35, 0.45);
+
+  // Tapered nose cone section (wide at the cabin, narrow at the radome).
+  const nose = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.6, 0.98, 1.5, 14),
+    mat(color, 0.45)
   );
-  cabin.position.set(0, 1.5, 0.6);
-  group.add(cabin);
+  nose.rotation.x = Math.PI / 2;
+  nose.position.set(0, 1.42, 2.35);
+  group.add(nose);
 
-  const windscreen = new THREE.Mesh(
-    new RoundedBoxGeometry(1.95, 1.3, 1.6, 3, 0.3),
-    glass
-  );
-  windscreen.position.set(0, 1.6, 1.6);
-  group.add(windscreen);
+  // Blunt radome, not a spike.
+  const radome = new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 12), mat(color, 0.45));
+  radome.position.set(0, 1.42, 3.05);
+  radome.scale.set(1, 0.88, 0.92);
+  group.add(radome);
 
-  const boom = new THREE.Mesh(
-    new THREE.ConeGeometry(0.55, 6.2, 10),
-    mat(color, 0.5)
-  );
-  boom.rotation.x = -Math.PI / 2;
-  boom.position.set(0, 1.7, -4.2);
-  group.add(boom);
+  // Bubble canopy over the cockpit and a chin window under the nose.
+  const canopy = new THREE.Mesh(new THREE.SphereGeometry(1.0, 18, 14), glass);
+  canopy.position.set(0, 1.92, 1.4);
+  canopy.scale.set(0.96, 0.84, 1.22);
+  group.add(canopy);
+  const chin = new THREE.Mesh(new THREE.SphereGeometry(0.52, 12, 10), glass);
+  chin.position.set(0, 1.12, 2.6);
+  chin.scale.set(1, 0.72, 0.85);
+  group.add(chin);
 
-  rbox(group, 0.16, 1.6, 1.1, 0.05, 0xdd4433, 0, 2.2, -7.0, 0.4);
+  // Roof fairing behind the canopy (hides the canopy/cabin intersection).
+  rbox(group, 1.86, 0.48, 2.5, 0.28, color, 0, 2.42, -0.35, 0.45);
 
+  // Cabin trim stripe and door seams.
   for (const side of [-1, 1]) {
-    box(group, 0.12, 0.12, 4.2, dark, side * 1.05, 0.22, 0.4);
-    for (const z of [-0.8, 1.2]) {
-      box(group, 0.08, 0.75, 0.08, dark, side * 1.05, 0.55, z);
+    box(group, 0.05, 0.14, 2.9, trim, side * 0.985, 1.05, 0.4);
+    box(group, 0.04, 1.0, 0.06, dark, side * 0.99, 1.35, 0.35, 0.5);
+    box(group, 0.04, 1.0, 0.06, dark, side * 0.99, 1.35, -0.75, 0.5);
+  }
+
+  // ---------------------------------------------------------------- tail boom
+  // Long, thin and slightly drooped, the way a light helicopter boom sits.
+  const boom = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.28, 0.44, 4.7, 10),
+    mat(color, 0.5)
+  );
+  boom.rotation.x = Math.PI / 2;
+  boom.position.set(0, 1.74, -3.75);
+  group.add(boom);
+  // Diagonal brace from the cabin roof into the boom.
+  const brace = box(group, 0.11, 0.11, 1.7, dark, 0, 1.46, -1.85);
+  brace.rotation.x = -0.2;
+
+  // -------------------------------------------------------------- tail group
+  // Swept fin: a tall main panel with a smaller lower fin under the boom.
+  rbox(group, 0.16, 1.55, 1.7, 0.08, color, 0, 2.32, -6.05, 0.5);
+  rbox(group, 0.14, 0.85, 0.95, 0.06, color, 0, 1.5, -6.35, 0.5);
+  box(group, 0.14, 0.1, 0.55, trim, 0, 3.02, -5.55, 0.5);
+  // Horizontal stabiliser with endplates.
+  box(group, 2.35, 0.09, 0.64, color, 0, 1.95, -5.7);
+  for (const side of [-1, 1]) {
+    box(group, 0.08, 0.5, 0.6, color, side * 1.16, 2.02, -5.7);
+  }
+
+  // Tail rotor: two blades on the right of the fin. The group spins on X, so
+  // the blades live in the Y/Z plane.
+  const tailRotorGroup = new THREE.Group();
+  tailRotorGroup.position.set(0.26, 2.3, -6.5);
+  const tailHub = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.15, 0.15, 0.14, 10),
+    mat(metal, 0.4, 0.6)
+  );
+  tailHub.rotation.z = Math.PI / 2;
+  tailRotorGroup.add(tailHub);
+  for (let i = 0; i < 2; i += 1) {
+    const holder = new THREE.Group();
+    holder.rotation.x = i * Math.PI;
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.0, 0.17), mat(0x22262a, 0.6));
+    blade.position.y = 0.55;
+    holder.add(blade);
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.16, 0.18), mat(trim, 0.6));
+    tip.position.y = 1.02;
+    holder.add(tip);
+    tailRotorGroup.add(holder);
+  }
+  group.add(tailRotorGroup);
+
+  // ------------------------------------------------------------- engine deck
+  // Cowling behind the mast plus two exhaust stacks, so the top has structure.
+  rbox(group, 1.25, 0.62, 1.7, 0.24, color, 0, 2.38, -1.35, 0.5);
+  rbox(group, 0.9, 0.2, 1.5, 0.08, metal, 0, 2.72, -1.35, 0.35);
+  for (const side of [-1, 1]) {
+    const pipe = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.1, 0.12, 0.5, 8),
+      mat(0x4a5057, 0.5, 0.4)
+    );
+    pipe.rotation.x = Math.PI / 2;
+    pipe.position.set(side * 0.4, 2.3, -2.2);
+    group.add(pipe);
+  }
+
+  // -------------------------------------------------------------- main rotor
+  const mainRotorGroup = new THREE.Group();
+  mainRotorGroup.position.set(0, 2.92, 0.15);
+  const mast = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.1, 0.14, 0.75, 10),
+    mat(metal, 0.35, 0.6)
+  );
+  mast.position.y = -0.38;
+  mainRotorGroup.add(mast);
+  const mainRotorHub = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.3, 0.34, 0.2, 12),
+    mat(0x3a4046, 0.5)
+  );
+  mainRotorGroup.add(mainRotorHub);
+  for (let i = 0; i < 2; i += 1) {
+    const bladePivot = new THREE.Group();
+    bladePivot.rotation.y = i * Math.PI;
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.07, 0.34), mat(0x22262a, 0.6));
+    blade.position.set(2.55, 0.02, 0);
+    bladePivot.add(blade);
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.35), mat(trim, 0.6));
+    tip.position.set(4.6, 0.02, 0);
+    bladePivot.add(tip);
+    mainRotorGroup.add(bladePivot);
+  }
+  group.add(mainRotorGroup);
+
+  // ------------------------------------------------------------------- skids
+  // Tubes, not wheels: a helicopter on four car wheels was the other thing
+  // that made the old model look wrong.
+  for (const side of [-1, 1]) {
+    const skid = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.095, 0.095, 4.3, 8),
+      mat(metal, 0.4, 0.5)
+    );
+    skid.rotation.x = Math.PI / 2;
+    skid.position.set(side * 1.12, 0.2, 0.15);
+    group.add(skid);
+
+    const skidTip = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.095, 0.095, 0.75, 8),
+      mat(metal, 0.4, 0.5)
+    );
+    skidTip.rotation.x = Math.PI / 2 - 0.55;
+    skidTip.position.set(side * 1.12, 0.36, 2.4);
+    group.add(skidTip);
+
+    for (const z of [-0.95, 1.25]) {
+      // Vertical leg plus the cross tube into the belly.
+      box(group, 0.1, 1.0, 0.1, dark, side * 1.12, 0.68, z);
+      box(group, 0.55, 0.09, 0.09, dark, side * 0.92, 1.1, z);
     }
   }
 
-  const mainRotorGroup = new THREE.Group();
-  mainRotorGroup.position.set(0, 2.7, 0.4);
-  const mast = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.12, 0.14, 0.6, 10),
-    mat(0x889098, 0.3, 0.6)
-  );
-  mast.position.y = -0.3;
-  mainRotorGroup.add(mast);
-
-  rbox(mainRotorGroup, 9.6, 0.05, 0.36, 0.02, dark, 0, 0, 0, 0.3);
-  const mainRotorHub = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.4, 0.4, 0.15, 12),
-    mat(0xaaaaaa, 0.3, 0.7)
-  );
-  mainRotorGroup.add(mainRotorHub);
-  group.add(mainRotorGroup);
-
-  const tailRotorGroup = new THREE.Group();
-  tailRotorGroup.position.set(0.22, 2.2, -7.1);
-  rbox(tailRotorGroup, 0.04, 1.4, 0.18, 0.02, dark, 0, 0, 0, 0.3);
-  group.add(tailRotorGroup);
-
   const driver = buildDriver();
-  driver.position.set(-0.45, 1.1, 0.8);
+  driver.position.set(-0.45, 1.05, 0.85);
   group.add(driver);
-
-  const dummyWheels = addWheels(
-    group,
-    wheelRadius,
-    [
-      [-1.05, 1.2, false],
-      [1.05, 1.2, false],
-      [-1.05, -0.8, false],
-      [1.05, -0.8, false]
-    ],
-    0.1
-  );
 
   return finishVehicle({
     group,
-    steerPivots: dummyWheels.steerPivots,
+    steerPivots: [],
     spinners: [tailRotorGroup],
     rotors: [mainRotorGroup],
     rotorSpeed: 0,
     wheelRadius,
     length,
-    width: 2.8,
+    width: 2.4,
     centerOfMassY: 1.4,
     maxSpeed: 32,
     driver,
@@ -1274,7 +1527,7 @@ export function createMaverickHelicopter(color = 0x2b4c3f): VehicleRig {
     access: {
       label: 'HELICOPTER',
       entry: new THREE.Vector3(-1.4, 0, 0.6),
-      seat: new THREE.Vector3(-0.45, 0, 0.8),
+      seat: new THREE.Vector3(-0.45, 0, 0.85),
       interactionRange: 3.8,
       cameraHeight: 2.8
     }
@@ -1283,69 +1536,119 @@ export function createMaverickHelicopter(color = 0x2b4c3f): VehicleRig {
 
 export function createStuntPlane(color = 0xd43825): VehicleRig {
   const group = new THREE.Group();
-  const glass = glassMat(0x3a5f7d);
-  const wheelRadius = 0.32;
-  const length = 8.2;
+  const red = color;
+  const white = 0xf3f1e9;
+  const dark = 0x202327;
+  const glass = glassMat(0x2f4358);
+  const wheelRadius = 0.33;
+  const length = 8.8;
 
-  const body = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.75, 0.75, 6.4, 12),
-    mat(color, 0.4)
+  // ---------------------------------------------------------------- fuselage
+  // A fat, chunky body. The old model was a thin cylinder, which is what made
+  // it read as a pencil; this one has real volume and a proper tail taper.
+  rbox(group, 1.5, 1.5, 6.8, 0.55, red, 0, 1.45, 0);
+  const tailBoom = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.62, 0.32, 2.9, 10),
+    mat(red, 0.45)
   );
-  body.rotation.x = Math.PI / 2;
-  body.position.set(0, 1.1, 0);
-  group.add(body);
+  tailBoom.rotation.x = Math.PI / 2;
+  tailBoom.position.set(0, 1.5, -4.35);
+  group.add(tailBoom);
 
-  const nose = new THREE.Mesh(
-    new THREE.ConeGeometry(0.75, 1.6, 12),
-    mat(0xffcc00, 0.4)
+  // Nose cowling with the white ring.
+  const cowl = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.84, 0.7, 1.0, 12),
+    mat(red, 0.4)
   );
-  nose.rotation.x = Math.PI / 2;
-  nose.position.set(0, 1.1, 4.0);
-  group.add(nose);
+  cowl.rotation.x = Math.PI / 2;
+  cowl.position.set(0, 1.45, 3.75);
+  group.add(cowl);
+  const cowlRing = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.85, 0.85, 0.16, 12),
+    mat(white, 0.5)
+  );
+  cowlRing.rotation.x = Math.PI / 2;
+  cowlRing.position.set(0, 1.45, 3.45);
+  group.add(cowlRing);
+
+  // Big spinner and three-blade prop.
+  const spinner = new THREE.Mesh(
+    new THREE.ConeGeometry(0.4, 0.85, 12),
+    mat(red, 0.35, 0.15)
+  );
+  spinner.rotation.x = Math.PI / 2;
+  spinner.position.set(0, 1.45, 4.62);
+  group.add(spinner);
 
   const propGroup = new THREE.Group();
-  propGroup.position.set(0, 1.1, 4.85);
-  const propHub = new THREE.Mesh(
-    new THREE.ConeGeometry(0.28, 0.45, 10),
-    mat(0x222222, 0.3, 0.8)
-  );
-  propHub.rotation.x = Math.PI / 2;
-  propGroup.add(propHub);
-  rbox(propGroup, 2.6, 0.04, 0.18, 0.02, 0x1a1a1a, 0, 0, 0, 0.3);
+  propGroup.position.set(0, 1.45, 4.55);
+  for (let i = 0; i < 3; i += 1) {
+    const blade = new THREE.Group();
+    blade.rotation.z = (i * Math.PI * 2) / 3;
+    rbox(blade, 0.12, 1.55, 0.05, 0.02, 0x17181a, 0, 0.86, 0, 0.35);
+    rbox(blade, 0.13, 0.2, 0.06, 0.02, 0xf2c200, 0, 1.52, 0, 0.4);
+    propGroup.add(blade);
+  }
   group.add(propGroup);
 
-  rbox(group, 8.8, 0.16, 1.8, 0.05, color, 0, 1.15, 0.8, 0.4);
-  rbox(group, 8.7, 0.18, 0.4, 0.02, 0xffcc00, 0, 1.16, 0.8, 0.4);
-  rbox(group, 3.2, 0.14, 1.2, 0.04, color, 0, 1.25, -2.8, 0.4);
-  rbox(group, 0.16, 1.8, 1.4, 0.05, 0xffcc00, 0, 1.9, -2.9, 0.4);
+  // ------------------------------------------------------------------- wings
+  // High wing over the cabin with visible V struts.
+  rbox(group, 10.6, 0.26, 2.4, 0.1, red, 0, 2.6, 0.55);
+  rbox(group, 10.6, 0.05, 0.55, 0.02, white, 0, 2.74, 1.35);
+  for (const side of [-1, 1]) {
+    for (const z of [-0.35, 0.95]) {
+      const strut = box(group, 0.1, 2.1, 0.1, dark, side * 1.5, 1.9, z);
+      strut.rotation.z = side * -0.76;
+    }
+    // White wingtip.
+    box(group, 0.6, 0.27, 2.2, white, side * 5.2, 2.6, 0.55);
+  }
 
-  rbox(group, 0.9, 0.65, 1.8, 0.2, 0x1d2e3d, 0, 1.6, 0.4).material = glass;
+  // ------------------------------------------------------------------ cabin
+  rbox(group, 1.2, 0.72, 1.75, 0.28, 0x2f4358, 0, 2.1, 0.8).material = glass;
+
+  // -------------------------------------------------------------- tailplane
+  rbox(group, 3.9, 0.14, 1.2, 0.05, red, 0, 2.2, -4.75);
+  rbox(group, 3.9, 0.04, 0.3, 0.02, white, 0, 2.29, -4.9);
+  rbox(group, 0.16, 1.55, 1.45, 0.06, red, 0, 2.85, -4.7);
+  rbox(group, 0.18, 0.24, 1.5, 0.02, white, 0, 3.2, -4.72);
+
+  // Registration-style cheatline along the fuselage.
+  for (const side of [-1, 1]) {
+    box(group, 0.03, 0.24, 5.3, white, side * 0.76, 1.28, 0.1);
+    box(group, 0.06, 0.34, 0.7, white, side * 0.15, 2.42, -5.32);
+  }
 
   const driver = buildDriver();
-  driver.position.set(0, 1.05, 0.3);
+  driver.position.set(0, 0.85, 0.85);
   group.add(driver);
 
-  const wheels = addWheels(
+  // Taildragger gear: two mains under the wing, one small tail wheel.
+  const mainWheels = addWheels(
     group,
-    wheelRadius,
+    0.33,
     [
-      [-1.1, 0.9, false],
-      [1.1, 0.9, false],
-      [0, -2.9, true]
+      [-1.3, 0.85, false],
+      [1.3, 0.85, false]
     ],
-    0.16
+    0.2
   );
+  const tailWheel = addWheels(group, 0.19, [[0, -3.6, true]], 0.14);
+  for (const side of [-1, 1]) {
+    box(group, 0.1, 0.5, 0.1, dark, side * 1.15, 0.62, 0.85);
+  }
+  box(group, 0.08, 0.35, 0.08, dark, 0, 0.36, -3.6);
 
-  return finishVehicle({
+  const rig = finishVehicle({
     group,
-    steerPivots: wheels.steerPivots,
-    spinners: wheels.spinners,
+    steerPivots: [...tailWheel.steerPivots],
+    spinners: [...mainWheels.spinners, ...tailWheel.spinners],
     propellers: [propGroup],
     wheelRadius,
     length,
-    width: 8.8,
-    centerOfMassY: 1.1,
-    maxSpeed: 36,
+    width: 10.6,
+    centerOfMassY: 1.2,
+    maxSpeed: 40,
     driver,
     kind: 'plane',
     pitch: 0,
@@ -1355,10 +1658,15 @@ export function createStuntPlane(color = 0xd43825): VehicleRig {
     verticalSpeed: 0,
     access: {
       label: 'STUNT PLANE',
-      entry: new THREE.Vector3(-1.4, 0, 0.4),
-      seat: new THREE.Vector3(0, 0, 0.3),
-      interactionRange: 3.8,
-      cameraHeight: 2.6
+      entry: new THREE.Vector3(-2.6, 0, 0.5),
+      seat: new THREE.Vector3(0, 0, 0.85),
+      interactionRange: 4.2,
+      cameraHeight: 2.8
     }
   });
+  // Tail number, painted on the white cheatline like the reference aircraft.
+  // x sits just outside the cheatline box (which ends at 0.775) so the letters
+  // are not buried inside it.
+  addRegistration(rig.group, 'N749PV', '#2a2320', 0.782, 1.28, 0.0, 1.35, 0.22);
+  return rig;
 }

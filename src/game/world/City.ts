@@ -1913,6 +1913,13 @@ export function createCity(): City {
   // Ground is split at the river so the water is not hidden under a plane, and
   // it stops at the west shoreline so the open ocean is left uncovered.
   const GROUND_EXTRA = 140;
+  // Dirt/sand sits this far below the road surface (y = 0) instead of 4 cm.
+  // The airport apron is a full circle of painted tarmac laid over the desert
+  // plane; at 4 cm the two were close enough for the depth buffer to lose them
+  // against each other at shallow angles, which is the "ground flipping and
+  // glitching" seen only at the airfield. A 10 cm step is invisible from a
+  // vehicle but unambiguous in the depth buffer.
+  const GROUND_SINK = -0.1;
   const westGroundWidth = RIVER_MIN_X - WEST_SHORE_X;
   const westGround = new THREE.Mesh(
     new THREE.PlaneGeometry(westGroundWidth, ROAD_LENGTH + GROUND_EXTRA * 2),
@@ -1980,7 +1987,7 @@ export function createCity(): City {
         eastGroundMaterial
       );
       groundTile.rotation.x = -Math.PI / 2;
-      groundTile.position.set(centerX, -0.04, centerZ);
+      groundTile.position.set(centerX, GROUND_SINK, centerZ);
       groundTile.receiveShadow = true;
       group.add(groundTile);
     }
@@ -2080,7 +2087,7 @@ export function createCity(): City {
   desertGround.rotation.x = -Math.PI / 2;
   desertGround.position.set(
     (desertLandStartX + desertLandEndX) / 2,
-    -0.04,
+    GROUND_SINK,
     0
   );
   desertGround.receiveShadow = true;
@@ -4216,19 +4223,22 @@ export function createCity(): City {
       Math.round((AIRPORT_GATE_ANGLE / (Math.PI * 2)) * fenceSegs) - Math.floor(gateSegs / 2);
 
     // The apron follows the fence: a square pad would hang 100 m outside the
-    // circular perimeter at each diagonal corner. Its own material (rather
-    // than the shared cached one) carries a depth bias so it never flickers
-    // against the ground tile underneath.
+    // circular perimeter at each diagonal corner.
+    //
+    // Do NOT put a polygon offset on this surface. A negative bias (the usual
+    // "pull the decal forward" trick) is unreliable once the ground beneath is
+    // involved: on the Mali/Adreno drivers used by the target phones it threw
+    // the apron *behind* the desert plane, so the field looked like it kept
+    // flipping between tarmac and sand as the camera moved. Instead the ground
+    // planes are sunk to -0.1 (see GROUND_SINK) and the apron sits at 0, which
+    // is a plain depth test every GPU gets right.
     const apronGeometry = new THREE.CircleGeometry(apr - 1, 96);
     apronGeometry.rotateX(-Math.PI / 2);
     const apronMaterial = new THREE.MeshStandardMaterial({
       color: 0x9aa0a6,
       roughness: 0.9,
       metalness: 0,
-      flatShading: true,
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -2
+      flatShading: true
     });
     const apron = new THREE.Mesh(apronGeometry, apronMaterial);
     apron.position.set(apx, 0, apz);
@@ -4334,9 +4344,21 @@ export function createCity(): City {
     box(0x45484d, 0.9, rwW, 0.2, rwLen, apx, 0.1, apz, { cast: false });
     box(0x33363a, 0.9, rwW + 6, 0.12, rwLen + 6, apx, 0.08, apz, { cast: false });
 
+    // Paint stacking (from the apron at y = 0):
+    //   shoulder top 0.14, runway top 0.20, threshold 0.222,
+    //   centreline 0.226, designations 0.230, taxiway 0.19,
+    //   taxiway line 0.235, crossing marks 0.245.
+    // Every layer has its own height now. Previously several of them shared a
+    // top exactly (or sat *under* the runway), so they flickered on and off as
+    // the camera moved.
+    const RUNWAY_TOP = 0.2;
+    const THRESHOLD_Y = RUNWAY_TOP + 0.002;
+    const CENTRELINE_Y = RUNWAY_TOP + 0.006;
+    const DESIGNATION_Y = RUNWAY_TOP + 0.01;
+
     // Centerline dashes
     for (let i = -rwLen / 2 + 20; i < rwLen / 2 - 20; i += 24) {
-      box(0xf0e6cf, 0.9, 3.2, 0.08, 10, apx, 0.16, apz + i, { cast: false });
+      box(0xf0e6cf, 0.9, 3.2, 0.04, 10, apx, CENTRELINE_Y + 0.02, apz + i, { cast: false });
     }
 
     // Threshold edge lights
@@ -4349,16 +4371,16 @@ export function createCity(): City {
     // Runway end threshold bars ("09" & "27")
     for (const tZ of [-rwLen / 2 + 16, rwLen / 2 - 16]) {
       for (let s = -18; s <= 18; s += 5) {
-        box(0xffffff, 0.9, 2.2, 0.05, 12, apx + s, 0.17, apz + tZ, { cast: false });
+        box(0xffffff, 0.9, 2.2, 0.04, 12, apx + s, THRESHOLD_Y + 0.02, apz + tZ, { cast: false });
       }
     }
     // "09" & "27" designation markings
-    box(0xffffff, 0.9, 7, 0.05, 2, apx - 10, 0.18, apz - rwLen / 2 + 40, { cast: false });
-    box(0xffffff, 0.9, 1.8, 0.05, 10, apx - 12, 0.18, apz - rwLen / 2 + 40, { cast: false });
-    box(0xffffff, 0.9, 1.8, 0.05, 10, apx - 8, 0.18, apz - rwLen / 2 + 40, { cast: false });
-    box(0xffffff, 0.9, 7, 0.05, 2, apx + 10, 0.18, apz - rwLen / 2 + 40, { cast: false });
-    box(0xffffff, 0.9, 1.8, 0.05, 10, apx + 8, 0.18, apz - rwLen / 2 + 40, { cast: false });
-    box(0xffffff, 0.9, 1.8, 0.05, 10, apx + 12, 0.18, apz - rwLen / 2 + 40, { cast: false });
+    box(0xffffff, 0.9, 7, 0.04, 2, apx - 10, DESIGNATION_Y + 0.02, apz - rwLen / 2 + 40, { cast: false });
+    box(0xffffff, 0.9, 1.8, 0.04, 10, apx - 12, DESIGNATION_Y + 0.02, apz - rwLen / 2 + 40, { cast: false });
+    box(0xffffff, 0.9, 1.8, 0.04, 10, apx - 8, DESIGNATION_Y + 0.02, apz - rwLen / 2 + 40, { cast: false });
+    box(0xffffff, 0.9, 7, 0.04, 2, apx + 10, DESIGNATION_Y + 0.02, apz - rwLen / 2 + 40, { cast: false });
+    box(0xffffff, 0.9, 1.8, 0.04, 10, apx + 8, DESIGNATION_Y + 0.02, apz - rwLen / 2 + 40, { cast: false });
+    box(0xffffff, 0.9, 1.8, 0.04, 10, apx + 12, DESIGNATION_Y + 0.02, apz - rwLen / 2 + 40, { cast: false });
 
     // No collider: tarmac is drivable ground. A solid box here walled the
     // field in half and made the aircraft parked on it unreachable.
@@ -4368,7 +4390,10 @@ export function createCity(): City {
     const taxys = [
       { x: apx - 90,  z: apz - 60, len: 300 },
       { x: apx - 100, z: apz - 150, len: 320 },
-      { x: apx + 20,  z: apz - 120, len: 280 },
+      // Keep this parallel taxiway clear of the runway strip (x = apx +/- 40).
+      // It used to sit at apx + 20, which laid a 28 m dirt strip straight down
+      // the eastern third of the runway.
+      { x: apx + 64,  z: apz - 120, len: 280 },
       { x: apx + 80,  z: apz - 40,  len: 200 },
       { x: apx + 130, z: apz - 200, len: 250 },
       { x: apx + 60,  z: apz - 40,  len: 180 }
@@ -4379,8 +4404,12 @@ export function createCity(): City {
       const fenceReach = Math.sqrt(Math.max(0, apr * apr - (t.x - apx) * (t.x - apx))) - 5;
       const len = Math.min(t.len, fenceReach * 2);
       if (len < 12) continue;
-      box(0x6d6557, 0.9, 28, 0.18, len, t.x, 0.12, t.z, { cast: false });
-      box(0xf5cd2e, 0.9, 1.4, 0.04, len, t.x, 0.17, t.z, { cast: false });
+      // Taxiway slab top 0.19, its centre line painted at 0.235.
+      // Asphalt grey, not the old muddy brown: a 28 m wide dirt-coloured strip
+      // across the apron read as sand, which is exactly the "the airport ground
+      // keeps flipping to desert" look the field had.
+      box(0x55595f, 0.9, 28, 0.18, len, t.x, 0.10, t.z, { cast: false });
+      box(0xf5cd2e, 0.9, 1.4, 0.03, len, t.x, 0.22, t.z, { cast: false });
     }
     // Cross taxiways
     const cx = [apx - 90, apx - 10, apx + 10, apx + 60];
@@ -4388,7 +4417,7 @@ export function createCity(): City {
     for (const x of cx) {
       for (const z of cz) {
         if (Math.abs(x - apx) + Math.abs(z - apz) < 200) continue;
-        box(0xf5cd2e, 0.9, 1.4, 0.04, 1.4, x, 0.17, z, { cast: false });
+        box(0xf5cd2e, 0.9, 1.4, 0.03, 1.4, x, 0.23, z, { cast: false });
       }
     }
 
@@ -4632,12 +4661,14 @@ export function createCity(): City {
     // ------------------------------------------------------------------ Helipad
     const hx = apx + 80, hz = apz + 100;
     box(0x3a3d42, 0.9, 22, 0.15, 22, hx, 0.08, hz, { cast: false });
+    // Slab top is 0.155; the paint sits at 0.166 so it is 1 mm clear of it
+    // instead of floating a centimetre and a half above the pad.
     for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
-      box(0xf5cd2e, 0.9, 1.8, 0.02, 0.4, hx + Math.cos(a) * 9, 0.16, hz + Math.sin(a) * 9, { ry: -a, cast: false });
+      box(0xf5cd2e, 0.9, 1.8, 0.02, 0.4, hx + Math.cos(a) * 9, 0.166, hz + Math.sin(a) * 9, { ry: -a, cast: false });
     }
-    box(0xf5cd2e, 0.9, 1.2, 0.02, 6.4, hx - 2.2, 0.17, hz, { cast: false });
-    box(0xf5cd2e, 0.9, 1.2, 0.02, 6.4, hx + 2.2, 0.17, hz, { cast: false });
-    box(0xf5cd2e, 0.9, 5.6, 0.02, 1.2, hx, 0.17, hz, { cast: false });
+    box(0xf5cd2e, 0.9, 1.2, 0.02, 6.4, hx - 2.2, 0.167, hz, { cast: false });
+    box(0xf5cd2e, 0.9, 1.2, 0.02, 6.4, hx + 2.2, 0.167, hz, { cast: false });
+    box(0xf5cd2e, 0.9, 5.6, 0.02, 1.2, hx, 0.167, hz, { cast: false });
 
     // ------------------------------------------------------------------ Airport Access Road
     // Leaves the z=-336 cross street at the east city edge, crosses the desert
@@ -4658,20 +4689,22 @@ export function createCity(): City {
     const accessMidX = (accessStartX + accessEndX) / 2;
     const accessMidZ = (accessStartZ + accessEndZ) / 2;
     const accessHalf = 8;
-    box(0x3f4246, 1, accessLen, 0.2, accessHalf * 2, accessMidX, -0.1, accessMidZ, { ry: accessYaw });
+    // Road slab top at 0.04: just proud of the apron (0) and the desert
+    // (-0.1) so its edges never z-fight with either.
+    box(0x3f4246, 1, accessLen, 0.2, accessHalf * 2, accessMidX, -0.06, accessMidZ, { ry: accessYaw });
 
     // Double centre line and edge lines, laid along the same heading.
     for (const off of [-0.22, 0.22]) {
       box(
         0xe6c445, 0.95, accessLen, 0.012, 0.12,
-        accessMidX - accessDirZ * off, 0.013, accessMidZ + accessDirX * off,
+        accessMidX - accessDirZ * off, 0.046, accessMidZ + accessDirX * off,
         { ry: accessYaw }
       );
     }
     for (const off of [-accessHalf + 0.5, accessHalf - 0.5]) {
       box(
         0xe8e2cf, 0.95, accessLen, 0.012, 0.16,
-        accessMidX - accessDirZ * off, 0.013, accessMidZ + accessDirX * off,
+        accessMidX - accessDirZ * off, 0.046, accessMidZ + accessDirX * off,
         { ry: accessYaw }
       );
     }
@@ -4733,10 +4766,10 @@ export function createCity(): City {
     const inRoadYaw = -Math.atan2(inRoadDz, inRoadDx);
     const inRoadMidX = (inRoadStartX + inRoadEndX) / 2;
     const inRoadMidZ = (inRoadStartZ + inRoadEndZ) / 2;
-    box(0x3f4246, 1, inRoadLen2, 0.2, 14, inRoadMidX, -0.07, inRoadMidZ, { ry: inRoadYaw });
+    box(0x3f4246, 1, inRoadLen2, 0.2, 14, inRoadMidX, -0.04, inRoadMidZ, { ry: inRoadYaw });
     for (const off of [-6.5, 6.5]) {
       box(0xe8e2cf, 0.95, inRoadLen2, 0.012, 0.14,
-        inRoadMidX - inRoadDz * off / inRoadLen2 * 2, 0.045, inRoadMidZ + inRoadDx * off / inRoadLen2 * 2,
+        inRoadMidX - inRoadDz * off / inRoadLen2 * 2, 0.074, inRoadMidZ + inRoadDx * off / inRoadLen2 * 2,
         { ry: inRoadYaw });
     }
 

@@ -298,6 +298,7 @@ export class Game {
   private camDesired = new THREE.Vector3();
   private moveFwd = new THREE.Vector3();
   private fuelStart = new THREE.Vector3();
+  private eulerScratch = new THREE.Euler();
 
   private carSpeed = 0;
   private carYaw = Math.PI;
@@ -318,6 +319,13 @@ export class Game {
   private impacts: Impact[] = [];
   private minimapCtx: CanvasRenderingContext2D | null = null;
   private minimapDrawnAt = -1;
+  private minimapZoom = 1;
+  private minimapHeadingUp = true;
+  private minimapPointers = new Map<number, { x: number; y: number }>();
+  private minimapPinchDistance = 0;
+  private minimapPinchGesture = false;
+  private minimapTapTimer: number | null = null;
+  private minimapLastTapAt = -9999;
   private worldMapCtx: CanvasRenderingContext2D | null = null;
   private worldMapElement: HTMLElement | null = null;
   private worldMapOpen = false;
@@ -564,7 +572,80 @@ export class Game {
     this.worldMapElement = byId('world-map');
     const worldMapCanvas = document.getElementById('world-map-canvas') as HTMLCanvasElement | null;
     if (worldMapCanvas) this.worldMapCtx = worldMapCanvas.getContext('2d');
-    hud.minimap?.addEventListener('click', () => this.setWorldMapOpen(true));
+    const minimap = hud.minimap;
+    if (minimap) {
+      const cancelTapOpen = (): void => {
+        if (this.minimapTapTimer !== null) {
+          window.clearTimeout(this.minimapTapTimer);
+          this.minimapTapTimer = null;
+        }
+      };
+      minimap.addEventListener('pointerdown', (event: PointerEvent) => {
+        if (this.minimapPointers.size === 0) cancelTapOpen();
+        this.minimapPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        minimap.setPointerCapture(event.pointerId);
+        if (this.minimapPointers.size >= 2) {
+          this.minimapPinchGesture = true;
+          const [first, second] = [...this.minimapPointers.values()];
+          this.minimapPinchDistance = Math.hypot(first.x - second.x, first.y - second.y);
+        }
+        event.preventDefault();
+      });
+      minimap.addEventListener('pointermove', (event: PointerEvent) => {
+        if (!this.minimapPointers.has(event.pointerId)) return;
+        this.minimapPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (!this.minimapPinchGesture || this.minimapPointers.size < 2) return;
+        const [first, second] = [...this.minimapPointers.values()];
+        const distance = Math.hypot(first.x - second.x, first.y - second.y);
+        if (this.minimapPinchDistance > 0 && distance > 0) {
+          this.minimapZoom = clamp(
+            this.minimapZoom * (distance / this.minimapPinchDistance),
+            0.6,
+            3.4
+          );
+          this.minimapDrawnAt = -1;
+          this.drawMinimap();
+        }
+        this.minimapPinchDistance = distance;
+        event.preventDefault();
+      });
+      const endMinimapPointer = (event: PointerEvent, allowTap: boolean): void => {
+        const wasPinch = this.minimapPinchGesture;
+        this.minimapPointers.delete(event.pointerId);
+        if (this.minimapPointers.size > 0) return;
+        this.minimapPinchGesture = false;
+        this.minimapPinchDistance = 0;
+        if (wasPinch || !allowTap) return;
+        // One tap opens the full city map. A second tap inside the window
+        // resets the zoom instead, which is the quick way back out of a
+        // pinch. The open is delayed so a double tap never fires both.
+        const now = performance.now();
+        if (now - this.minimapLastTapAt < 320) {
+          cancelTapOpen();
+          this.minimapLastTapAt = -9999;
+          this.minimapZoom = 1;
+          this.minimapDrawnAt = -1;
+          this.drawMinimap();
+          return;
+        }
+        this.minimapLastTapAt = now;
+        cancelTapOpen();
+        this.minimapTapTimer = window.setTimeout(() => {
+          this.minimapTapTimer = null;
+          this.setWorldMapOpen(true);
+        }, 280);
+      };
+      minimap.addEventListener('pointerup', (event: PointerEvent) => endMinimapPointer(event, true));
+      minimap.addEventListener('pointercancel', (event: PointerEvent) => endMinimapPointer(event, false));
+    }
+    byId('minimap-mode')?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      this.minimapHeadingUp = !this.minimapHeadingUp;
+      const chip = byId('minimap-mode');
+      if (chip) chip.textContent = this.minimapHeadingUp ? 'HDG' : 'N';
+      this.minimapDrawnAt = -1;
+      this.drawMinimap();
+    });
     this.worldMapElement?.addEventListener('click', (event) => {
       if (event.target === this.worldMapElement) this.setWorldMapOpen(false);
     });
@@ -578,6 +659,33 @@ export class Game {
       this.drawMinimap();
       this.drawWorldMap();
     });
+    const toCanvas = (clientX: number, clientY: number): [number, number] => {
+      if (!worldMapCanvas) return [0, 0];
+      const bounds = worldMapCanvas.getBoundingClientRect();
+      const borderX = (bounds.width - worldMapCanvas.clientWidth) / 2;
+      const borderY = (bounds.height - worldMapCanvas.clientHeight) / 2;
+      const x = clamp(clientX - bounds.left - borderX, 0, worldMapCanvas.clientWidth);
+      const y = clamp(clientY - bounds.top - borderY, 0, worldMapCanvas.clientHeight);
+      return [
+        (x / worldMapCanvas.clientWidth) * worldMapCanvas.width,
+        (y / worldMapCanvas.clientHeight) * worldMapCanvas.height
+      ];
+    };
+    const canvasPoint = (event: PointerEvent | WheelEvent): [number, number] =>
+      toCanvas(event.clientX, event.clientY);
+    const zoomWorldMapBy = (factor: number): void => {
+      if (!worldMapCanvas) return;
+      this.zoomWorldMap(factor, worldMapCanvas.width / 2, worldMapCanvas.height / 2);
+    };
+    byId('map-zoom-in')?.addEventListener('click', () => zoomWorldMapBy(1.4));
+    byId('map-zoom-out')?.addEventListener('click', () => zoomWorldMapBy(1 / 1.4));
+    byId('map-reset')?.addEventListener('click', () => {
+      this.worldMapZoom = 1;
+      this.worldMapPanX = 0;
+      this.worldMapPanY = 0;
+      this.drawWorldMap();
+    });
+
     worldMapCanvas?.addEventListener('pointerdown', (event: PointerEvent) => {
       if (this.mapPointers.size === 0) {
         this.mapPinchGesture = false;
@@ -607,13 +715,15 @@ export class Game {
         const [first, second] = [...this.mapPointers.values()];
         const distance = Math.hypot(first.x - second.x, first.y - second.y);
         if (this.mapPinchDistance > 0 && distance > 0) {
-          this.worldMapZoom = clamp(this.worldMapZoom * (distance / this.mapPinchDistance), 1, 4);
-          this.constrainWorldMapPan(worldMapCanvas.width, worldMapCanvas.height);
-          this.drawWorldMap();
+          const [anchorX, anchorY] = toCanvas(
+            (first.x + second.x) / 2,
+            (first.y + second.y) / 2
+          );
+          this.zoomWorldMap(distance / this.mapPinchDistance, anchorX, anchorY);
         }
         this.mapPinchDistance = distance;
         event.preventDefault();
-      } else if (this.worldMapZoom > 1 && this.mapDragStart?.pointerId === event.pointerId) {
+      } else if (this.mapDragStart?.pointerId === event.pointerId) {
         const bounds = worldMapCanvas.getBoundingClientRect();
         const dx = (event.clientX - this.mapDragStart.x) * (worldMapCanvas.width / bounds.width);
         const dy = (event.clientY - this.mapDragStart.y) * (worldMapCanvas.height / bounds.height);
@@ -629,13 +739,7 @@ export class Game {
     });
     worldMapCanvas?.addEventListener('pointerup', (event: PointerEvent) => {
       if (!this.mapPinchGesture && !this.mapDragGesture && this.worldMapCtx) {
-        const bounds = worldMapCanvas.getBoundingClientRect();
-        const borderX = (bounds.width - worldMapCanvas.clientWidth) / 2;
-        const borderY = (bounds.height - worldMapCanvas.clientHeight) / 2;
-        const clientX = clamp(event.clientX - bounds.left - borderX, 0, worldMapCanvas.clientWidth);
-        const clientY = clamp(event.clientY - bounds.top - borderY, 0, worldMapCanvas.clientHeight);
-        const px = (clientX / worldMapCanvas.clientWidth) * worldMapCanvas.width;
-        const py = (clientY / worldMapCanvas.clientHeight) * worldMapCanvas.height;
+        const [px, py] = canvasPoint(event);
         this.pinnedWaypoint = this.mapToWorld(px, py, worldMapCanvas.width, worldMapCanvas.height);
         this.updateMapDestinationLabel();
         this.drawMinimap();
@@ -659,9 +763,8 @@ export class Game {
       }
     });
     worldMapCanvas?.addEventListener('wheel', (event: WheelEvent) => {
-      this.worldMapZoom = clamp(this.worldMapZoom * Math.exp(-event.deltaY * 0.001), 1, 4);
-      this.constrainWorldMapPan(worldMapCanvas.width, worldMapCanvas.height);
-      this.drawWorldMap();
+      const [px, py] = canvasPoint(event);
+      this.zoomWorldMap(Math.exp(-event.deltaY * 0.0015), px, py);
       event.preventDefault();
     }, { passive: false });
     this.updateMapDestinationLabel();
@@ -1473,12 +1576,13 @@ export class Game {
 
     const gas = state.gasHeld;
     const reverse = state.reverseHeld;
-    const climb = state.cPressed || state.cHeld || (gas && state.moveY < -0.35);
-    const dive = state.dHeld || (reverse && state.moveY > 0.35);
     const steerX = Math.abs(state.moveX) > 0.12 ? state.moveX : 0;
-    const pitchY = Math.abs(state.moveY) > 0.12 ? state.moveY : 0;
+    // The stick reports +1 when pushed down, so stick-up is negative.
+    const stickY = Math.abs(state.moveY) > 0.12 ? state.moveY : 0;
 
     if (isChopper) {
+      const climb = state.cPressed || state.cHeld || stickY < -0.35;
+      const dive = state.dHeld || stickY > 0.35;
       const targetRotorSpeed = gas || climb ? 26 : 8;
       aircraft.rotorSpeed += (targetRotorSpeed - aircraft.rotorSpeed) * Math.min(1.0, dt * 2.5);
 
@@ -1493,34 +1597,29 @@ export class Game {
       // Hover at mid rotor speed; climb/dive increases/decreases vertical speed
       const hoverSpeed = 24;
       if (climb && !dive) {
-        // Climbing: increase vertical speed smoothly
         aircraft.verticalSpeed += 14 * liftPower * dt;
       } else if (dive && !climb) {
-        // Diving: decrease vertical speed (descend)
         aircraft.verticalSpeed -= 14 * dt;
       } else {
-        // Auto-hold altitude using rotor speed error PD controller
         const hoverDiff = aircraft.rotorSpeed - hoverSpeed;
-        // Correction factor based on rotor speed error
         const correction = hoverDiff * 0.45;
         aircraft.verticalSpeed += correction * dt;
-        // Strong damping to prevent oscillation
         aircraft.verticalSpeed *= Math.max(0, 1 - dt * 2.8);
-        // Clamp vertical speed
         aircraft.verticalSpeed = Math.max(-22, Math.min(22, aircraft.verticalSpeed));
       }
 
-      // GTA-style: stick forward (moveY < 0) = nose down = dive; stick back = nose up = climb
-      const targetPitch = -pitchY * 0.45;
+      // Stick up pitches the nose down and sends the chopper forward.
+      const targetPitch = stickY * 0.45;
       const targetRoll = steerX * 0.45;
       aircraft.pitch += (targetPitch - aircraft.pitch) * Math.min(1.0, dt * 4.0);
       aircraft.roll += (targetRoll - aircraft.roll) * Math.min(1.0, dt * 4.0);
 
-      const forwardAccel = -aircraft.pitch * 28 * liftPower;
+      // Positive pitch is nose-down, which should push the aircraft forward.
+      const forwardAccel = aircraft.pitch * 28 * liftPower;
       this.carSpeed += (forwardAccel - this.carSpeed) * Math.min(1.0, dt * 2.0);
-      this.carYaw += steerX * 1.6 * dt;
-
+      this.carYaw -= steerX * 1.6 * dt;
     } else {
+      const maxAirSpeed = aircraft.maxSpeed ?? 42;
       if (aircraft.propellers) {
         for (const p of aircraft.propellers) p.rotation.z += (Math.abs(this.carSpeed) + 14) * dt;
       }
@@ -1528,56 +1627,103 @@ export class Game {
         for (const s of aircraft.spinners) s.rotation.x += (this.carSpeed / aircraft.wheelRadius) * dt;
       }
 
-      const maxAirSpeed = aircraft.maxSpeed ?? 42;
-      const accel = 14.0;
-      if (gas) this.carSpeed = Math.min(maxAirSpeed, this.carSpeed + accel * dt);
-      else if (reverse) this.carSpeed = Math.max(CAR_MAX_REVERSE, this.carSpeed - CAR_BRAKE * dt);
-      else {
-        const drag = (1.5 + Math.abs(this.carSpeed) * 0.04) * dt;
-        this.carSpeed = Math.abs(this.carSpeed) <= drag ? 0 : this.carSpeed - Math.sign(this.carSpeed) * drag;
-      }
+      const grounded = (aircraft.altitude ?? 0) <= 0.05;
 
-      const airspeed = Math.abs(this.carSpeed);
-      const isAirborne = aircraft.altitude > 0.4 || (airspeed > 12 && climb);
-
-      if (isAirborne) {
-        const targetPitch = dive ? 0.5 : climb ? -0.5 : pitchY * 0.55;
-        aircraft.pitch += (targetPitch - aircraft.pitch) * Math.min(1.0, dt * 5.5);
-        aircraft.roll += (-steerX * 0.6 - aircraft.roll * 0.2) * Math.min(1.0, dt * 5.0);
-        const bankYaw = aircraft.roll * 1.4;
-        this.carYaw += bankYaw * dt;
-        const liftFactor = -Math.sin(aircraft.pitch) * Math.min(airspeed, 35) * 0.8;
-        const dragForce = (airspeed > 0.5) ? airspeed * 0.05 : 0;
-        const thrust = gas ? 18 : 0;
-        const gravity = -12;
-        aircraft.verticalSpeed = liftFactor + gravity + thrust * 0.3 - dragForce;
-        if (aircraft.altitude < 5) {
-          aircraft.verticalSpeed *= 1.2;
-        }
+      // ---------------------------------------------------------------- throttle
+      // GAS is the only throttle control. Release it and the aircraft settles to
+      // a slow cruise instead of falling out of the sky; REVERSE is an airbrake
+      // (and a wheel brake on the ground).
+      if (gas) {
+        this.carSpeed = Math.min(maxAirSpeed, this.carSpeed + 13 * dt);
+      } else if (reverse) {
+        this.carSpeed = Math.max(0, this.carSpeed - 16 * dt);
+      } else if (grounded) {
+        const rolling = (2.4 + this.carSpeed * 0.08) * dt;
+        this.carSpeed = Math.max(0, this.carSpeed - rolling);
       } else {
-        aircraft.pitch += (0 - aircraft.pitch) * Math.min(1.0, dt * 8.0);
-        aircraft.roll += (0 - aircraft.roll) * Math.min(1.0, dt * 8.0);
-        const drag = (1.5 + Math.abs(this.carSpeed) * 0.06) * dt;
-        this.carSpeed = Math.abs(this.carSpeed) <= drag ? 0 : this.carSpeed - Math.sign(this.carSpeed) * drag;
-        this.carYaw += steerX * 1.8 * Math.min(1, Math.abs(this.carSpeed) / 8) * dt;
+        this.carSpeed += (maxAirSpeed * 0.4 - this.carSpeed) * Math.min(1, dt * 0.45);
       }
+
+      const airspeed = Math.max(0, this.carSpeed);
+      const speedRatio = Math.min(1.25, airspeed / maxAirSpeed);
+
+      // ------------------------------------------------------------------- pitch
+      // Stick up = climb, stick down = dive. Release and the nose levels itself.
+      // The optional C/D buttons still work for anyone who prefers them.
+      let pitchCmd = -stickY;
+      if (state.cHeld || state.cPressed) pitchCmd = 1;
+      if (state.dHeld) pitchCmd = -1;
+      const pitchAuthority = 1.5 * (0.35 + 0.65 * Math.min(1, speedRatio));
+      if (Math.abs(pitchCmd) > 0.1) {
+        aircraft.pitch -= pitchCmd * pitchAuthority * dt;
+      } else {
+        aircraft.pitch += (0 - aircraft.pitch) * Math.min(1, dt * 2.6);
+      }
+      // Nose-up 32 degrees, nose-down 34 degrees. On the ground the nose is not
+      // allowed to dig into the tarmac.
+      aircraft.pitch = clamp(aircraft.pitch, -0.56, grounded ? 0.06 : 0.6);
+
+      // -------------------------------------------------------------------- roll
+      // Right stick banks right (positive roll in the model's convention) and
+      // the bank is what turns the aircraft, so steering feels like flying
+      // rather than sliding.
+      const targetRoll = steerX * 0.72;
+      aircraft.roll += (targetRoll - aircraft.roll) * (1 - Math.exp(-6 * dt));
+
+      // Bank turns the nose: a right bank (positive roll) decreases yaw.
+      const bankTurn = -Math.sin(aircraft.roll) * 1.35;
+      this.carYaw += bankTurn * clamp(speedRatio, 0.25, 1) * dt;
+      if (grounded) {
+        // Nose-wheel steering while taxiing.
+        this.carYaw -= steerX * 1.5 * Math.min(1, airspeed / 8) * dt;
+      }
+
+      // ---------------------------------------------------------------- altitude
+      // Nose attitude and airspeed make the climb. There is no magic lift when
+      // pointing up at taxi speed: below roughly 42% of top speed the wing gives
+      // up and the aircraft sinks, which is what makes the throttle matter.
+      const climbFromPitch = -Math.sin(aircraft.pitch) * airspeed * 0.85;
+      const stallSink = -Math.max(0, 0.42 - speedRatio) * 25;
+      const targetVs = clamp(climbFromPitch + stallSink, -34, 24);
+      aircraft.verticalSpeed += (targetVs - aircraft.verticalSpeed) * Math.min(1, dt * 3.2);
+
+      // Climbing costs speed, diving buys it back.
+      this.carSpeed = clamp(
+        this.carSpeed + Math.sin(aircraft.pitch) * 7 * dt,
+        0,
+        maxAirSpeed
+      );
+
+      // Forward travel follows the nose, so a climb also slows the ground track.
+      const hSpeed = airspeed * Math.cos(aircraft.pitch);
+      const fwd = this.moveFwd.set(Math.sin(this.carYaw), 0, Math.cos(this.carYaw));
+      aircraft.group.position.addScaledVector(fwd, hSpeed * dt);
     }
 
-    const fwd = this.moveFwd.set(Math.sin(this.carYaw), 0, Math.cos(this.carYaw));
-    aircraft.group.position.addScaledVector(fwd, this.carSpeed * dt);
+    if (isChopper) {
+      const fwd = this.moveFwd.set(Math.sin(this.carYaw), 0, Math.cos(this.carYaw));
+      aircraft.group.position.addScaledVector(fwd, this.carSpeed * dt);
+    }
 
     aircraft.altitude = Math.max(0, aircraft.altitude + aircraft.verticalSpeed * dt);
     const groundY = this.city.groundHeightAt(aircraft.group.position.x, aircraft.group.position.z);
 
     if (aircraft.altitude <= 0.05) {
-      aircraft.altitude = 0;
-      aircraft.verticalSpeed = 0;
-      aircraft.group.position.y = groundY;
+      // Only pin to the ground when the aircraft is not trying to climb. Zeroing
+      // the vertical speed unconditionally here also killed takeoff: every frame
+      // reset it before it could lift the wheels off.
+      if (aircraft.verticalSpeed > 0) {
+        aircraft.group.position.y = groundY + aircraft.altitude;
+      } else {
+        aircraft.altitude = 0;
+        aircraft.verticalSpeed = 0;
+        aircraft.group.position.y = groundY;
+      }
     } else {
       aircraft.group.position.y = groundY + aircraft.altitude;
     }
 
-    const euler = new THREE.Euler(aircraft.pitch, this.carYaw, aircraft.roll, 'YXZ');
+    const euler = this.eulerScratch.set(aircraft.pitch, this.carYaw, aircraft.roll, 'YXZ');
     aircraft.group.quaternion.setFromEuler(euler);
 
     if (aircraft.access) {
@@ -1592,8 +1738,8 @@ export class Game {
     this.setHint(`✈️ AIRSPEED: ${currentKmh} KM/H  |  ALTITUDE: ${currentAlt} M`);
 
     this.input.setButtonLabel('btn-gas', isChopper ? 'ROTOR' : 'THRUST');
-    this.input.setButtonLabel('btn-c', 'PITCH UP');
-    this.input.setButtonLabel('btn-d', 'PITCH DN');
+    this.input.setButtonLabel('btn-c', 'CLIMB');
+    this.input.setButtonLabel('btn-d', 'DIVE');
 
     if (b) {
       this.beginExit();
@@ -1949,12 +2095,16 @@ export class Game {
 
   private recoverOnFoot(): void {
     if (this.activeVehicle) setVehicleNightLighting(this.activeVehicle, false);
+    const leftFlightHud = this.activeVehicle?.kind === 'plane' || this.activeVehicle?.kind === 'helicopter';
     this.mode = 'foot';
     this.activeVehicle = null;
     this.player.group.visible = true;
     this.carSpeed = 0;
     this.input.reset();
     this.resetActionTracking();
+    // Clear the "AIRSPEED / ALTITUDE" line, which otherwise stayed on the HUD
+    // after stepping out of an aircraft.
+    if (leftFlightHud) this.setHint('');
   }
 
   private beginSiteEnter(site: CitySite): void {
@@ -4138,11 +4288,18 @@ export class Game {
 
     const inside = this.inside;
     const isBike = driving && vehicle ? vehicle.length < 2.5 : false;
+    const isPlane = driving && vehicle?.kind === 'plane';
+    // Aircraft get a much longer chase boom: at the car distance the camera sat
+    // inside the fuselage (and the bigger the plane, the worse it was). The boom
+    // also creeps out as you climb so there is a real sense of height.
+    const flightBoom = isPlane
+      ? 6 + clamp((vehicle?.altitude ?? 0) * 0.18, 0, 8)
+      : 0;
     const dist = driving
       ? clamp(
-          this.camDist + bridgeBlend * 4.5 + (isBike ? 3.2 : 5),
-          isBike ? 4.5 : 7,
-          bridgeBlend > 0.95 ? 22 : 16
+          this.camDist + bridgeBlend * 4.5 + (isBike ? 3.2 : 5) + flightBoom,
+          isPlane ? 13 : isBike ? 4.5 : 7,
+          bridgeBlend > 0.95 ? 26 : isPlane ? 26 : 16
         )
       : inside
         ? clamp(this.camDist, 2.2, 3.0)
@@ -4253,6 +4410,37 @@ export class Game {
     }
 
     if (this.mode === 'drive') {
+      const aircraft = this.activeVehicle;
+      // Fixed-wing and rotary aircraft get their own button layout. Without
+      // this branch the generic car layout overrode it: "C" was disabled as an
+      // unused JUMP key, so the climb button could not be pressed at all.
+      if (aircraft && (aircraft.kind === 'plane' || aircraft.kind === 'helicopter')) {
+        const isChopper = aircraft.kind === 'helicopter';
+        input.setButtonLabel('btn-a', 'NO GUN');
+        input.setButtonLabel('btn-b', 'EXIT');
+        input.setButtonLabel('btn-c', 'CLIMB');
+        input.setButtonLabel('btn-d', 'DIVE');
+        input.setButtonLabel('btn-e', this.player.armed ? 'PUT AWAY' : 'DRAW GUN');
+        input.setButtonLabel('btn-f', 'NEXT GUN');
+        input.setButtonLabel('btn-r', 'RELOAD');
+        input.setButtonEnabled('btn-a', false);
+        input.setButtonEnabled('btn-b', true);
+        input.setButtonEnabled('btn-c', true);
+        input.setButtonEnabled('btn-d', true);
+        input.setButtonEnabled('btn-e', true);
+        input.setButtonEnabled('btn-f', true);
+        input.setButtonEnabled('btn-r', false);
+        input.setButtonLabel('btn-gas', isChopper ? 'ROTOR' : 'THRUST');
+        input.setButtonLabel('btn-rev', 'AIRBRAKE');
+        input.setButtonEnabled('btn-gas', true);
+        input.setButtonEnabled('btn-rev', true);
+        input.setButtonActive('btn-c', input.state.cHeld);
+        input.setButtonActive('btn-d', input.state.dHeld);
+        input.setButtonActive('btn-gas', input.state.gasHeld);
+        input.setButtonActive('btn-rev', input.state.reverseHeld);
+        return;
+      }
+
       const canShoot = this.player.armed && !this.weapons.isMelee;
       input.setButtonLabel('btn-a', canShoot ? 'DRIVE-BY' : 'NO GUN');
       input.setButtonLabel(
@@ -4565,13 +4753,13 @@ export class Game {
     if (!label) return;
     label.textContent = this.pinnedWaypoint
       ? `PINNED · ${this.city.districtAt(this.pinnedWaypoint.x, this.pinnedWaypoint.z)}`
-      : 'Tap anywhere to pin a destination';
+      : 'Tap anywhere to pin · drag to pan · pinch or −/+ to zoom';
   }
 
   private mapToWorld(px: number, py: number, width: number, height: number): THREE.Vector3 {
     const { left, top, scale } = this.worldMapTransform(width, height);
     return new THREE.Vector3(
-      THREE.MathUtils.clamp(this.city.worldMinX + (px - left) / scale, this.city.worldMinX, this.city.worldMaxX),
+      THREE.MathUtils.clamp(this.city.worldMaxX - (px - left) / scale, this.city.worldMinX, this.city.worldMaxX),
       0,
       THREE.MathUtils.clamp(this.city.worldMaxZ - (py - top) / scale, this.city.worldMinZ, this.city.worldMaxZ)
     );
@@ -4598,6 +4786,29 @@ export class Game {
     };
   }
 
+  // Zoom the city map around a point in canvas pixels, the way a pinch or a
+  // wheel should feel: the world under the finger stays put while the scale
+  // changes. Also used by the +/- buttons (anchored on the canvas centre).
+  private zoomWorldMap(factor: number, anchorX: number, anchorY: number): void {
+    const ctx = this.worldMapCtx;
+    if (!ctx) return;
+    const width = ctx.canvas.width;
+    const height = ctx.canvas.height;
+    const next = clamp(this.worldMapZoom * factor, 0.5, 8);
+    if (Math.abs(next - this.worldMapZoom) < 0.0001) return;
+    const before = this.worldMapTransform(width, height);
+    const worldX = this.city.worldMinX + (anchorX - before.left) / before.scale;
+    const worldZ = this.city.worldMaxZ - (anchorY - before.top) / before.scale;
+    this.worldMapZoom = next;
+    const after = this.worldMapTransform(width, height);
+    this.worldMapPanX =
+      anchorX - (worldX - this.city.worldMinX) * after.scale - (width - after.mapWidth) / 2;
+    this.worldMapPanY =
+      anchorY - (this.city.worldMaxZ - worldZ) * after.scale - (height - after.mapHeight) / 2;
+    this.constrainWorldMapPan(width, height);
+    this.drawWorldMap();
+  }
+
   private constrainWorldMapPan(width: number, height: number): void {
     const padding = 34;
     const scale =
@@ -4619,14 +4830,20 @@ export class Game {
     const { width, height } = ctx.canvas;
     const { left, top, scale, mapWidth, mapHeight } = this.worldMapTransform(width, height);
     const point = (x: number, z: number): [number, number] => [
-      left + (x - this.city.worldMinX) * scale,
+      // Mirror x: with +z at the top, a true top-down view puts +x on the left.
+      left + (this.city.worldMaxX - x) * scale,
       top + (this.city.worldMaxZ - z) * scale
     ];
     const rect = (x0: number, x1: number, z0: number, z1: number, color: string): void => {
       const [x, y] = point(x0, z1);
       const [right, bottom] = point(x1, z0);
       ctx.fillStyle = color;
-      ctx.fillRect(x, y, right - x, bottom - y);
+      ctx.fillRect(
+        Math.min(x, right),
+        Math.min(y, bottom),
+        Math.abs(right - x),
+        Math.abs(bottom - y)
+      );
     };
 
     ctx.clearRect(0, 0, width, height);
@@ -4693,15 +4910,15 @@ export class Game {
 
     for (const site of this.city.sites) {
       const [x, y] = point(site.x, site.z);
-      drawEnterableSiteMapIcon(ctx, site, x, y, 16, this.worldMapZoom >= 2);
+      drawEnterableSiteMapIcon(ctx, site, x, y, 16, this.worldMapZoom >= 1.8);
     }
     for (const stop of this.city.transitStops) {
       const [x, y] = point(stop.x, stop.z + 12);
-      drawTransitMapIcon(ctx, stop, x, y, 15, this.worldMapZoom >= 2);
+      drawTransitMapIcon(ctx, stop, x, y, 15, this.worldMapZoom >= 1.8);
     }
     for (const station of this.city.railStations) {
       const [x, y] = point(station.x, station.z);
-      drawRailMapIcon(ctx, station, x, y, 15, this.worldMapZoom >= 2);
+      drawRailMapIcon(ctx, station, x, y, 15, this.worldMapZoom >= 1.8);
     }
 
     const player = this.mode === 'drive' && this.activeVehicle
@@ -4735,7 +4952,7 @@ export class Game {
     const heading = this.mode === 'drive' ? this.carYaw : this.player.yaw;
     ctx.save();
     ctx.translate(playerX, playerY);
-    ctx.rotate(heading);
+    ctx.rotate(-heading);
     ctx.fillStyle = '#55e18c';
     ctx.strokeStyle = '#0a1712';
     ctx.lineWidth = 2;
@@ -4752,30 +4969,41 @@ export class Game {
     ctx.strokeStyle = 'rgba(225, 233, 223, 0.18)';
     ctx.lineWidth = 1;
     ctx.strokeRect(left, top, mapWidth, mapHeight);
+    // Compass and scale are screen furniture: they stay in the corners instead
+    // of drifting off the edge when the map is panned or zoomed right out.
     ctx.textAlign = 'center';
     ctx.font = '700 11px Segoe UI, sans-serif';
-    ctx.fillStyle = 'rgba(244, 240, 229, 0.8)';
-    ctx.fillText('N', width - 28, top + 16);
+    ctx.fillStyle = 'rgba(244, 240, 229, 0.82)';
+    ctx.fillText('N', width - 24, 22);
     ctx.strokeStyle = 'rgba(244, 240, 229, 0.7)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(width - 28, top + 20);
-    ctx.lineTo(width - 28, top + 34);
+    ctx.moveTo(width - 24, 26);
+    ctx.lineTo(width - 24, 40);
+    ctx.moveTo(width - 28, 32);
+    ctx.lineTo(width - 24, 26);
+    ctx.lineTo(width - 20, 32);
     ctx.stroke();
-    const scaleLength = 100 * scale;
+    // Pick a round distance that lands near 90 px so the bar reads at any zoom.
+    const targetMetres = 90 / scale;
+    const magnitude = Math.pow(10, Math.floor(Math.log10(targetMetres)));
+    const niceMetres =
+      [1, 2, 5, 10].map((step) => step * magnitude).find((m) => m >= targetMetres) ??
+      magnitude * 10;
+    const scaleLength = niceMetres * scale;
     ctx.strokeStyle = 'rgba(244, 240, 229, 0.72)';
     ctx.beginPath();
-    ctx.moveTo(left + 12, top + mapHeight - 14);
-    ctx.lineTo(left + 12 + scaleLength, top + mapHeight - 14);
-    ctx.moveTo(left + 12, top + mapHeight - 18);
-    ctx.lineTo(left + 12, top + mapHeight - 10);
-    ctx.moveTo(left + 12 + scaleLength, top + mapHeight - 18);
-    ctx.lineTo(left + 12 + scaleLength, top + mapHeight - 10);
+    ctx.moveTo(14, height - 14);
+    ctx.lineTo(14 + scaleLength, height - 14);
+    ctx.moveTo(14, height - 18);
+    ctx.lineTo(14, height - 10);
+    ctx.moveTo(14 + scaleLength, height - 18);
+    ctx.lineTo(14 + scaleLength, height - 10);
     ctx.stroke();
     ctx.font = '600 9px Segoe UI, sans-serif';
     ctx.textAlign = 'left';
     ctx.fillStyle = 'rgba(244, 240, 229, 0.72)';
-    ctx.fillText('100 m', left + 18 + scaleLength, top + mapHeight - 11);
+    ctx.fillText(`${niceMetres} m`, 20 + scaleLength, height - 11);
   }
 
   private drawMinimap(): void {
@@ -4823,11 +5051,22 @@ export class Game {
     const worldZ = this.mode === 'drive' && this.activeVehicle
       ? this.activeVehicle.group.position.z
       : this.player.group.position.z;
-    const scale = 0.52;
+    const scale = 0.52 * this.minimapZoom;
+    // The world is right-handed, so a true top-down view with +z (north) at
+    // the top has +x on the LEFT. The old map drew +x on the right, which made
+    // the whole thing a mirror image and is why turning/moving felt inverted.
+    // Heading-up then rotates that correct projection so the camera direction
+    // is always at the top of the minimap. The chip switches to north-up.
+    const mapRotation = this.minimapHeadingUp ? this.camYaw + Math.PI : 0;
+    const cosRot = Math.cos(mapRotation);
+    const sinRot = Math.sin(mapRotation);
     const map = (x: number, z: number): [number, number] => {
       const dx = x - worldX;
       const dz = z - worldZ;
-      return [size / 2 + dx * scale, size / 2 - dz * scale];
+      return [
+        size / 2 + (-dx * cosRot + dz * sinRot) * scale,
+        size / 2 + (-dx * sinRot - dz * cosRot) * scale
+      ];
     };
 
     const poly = (x0: number, x1: number, z0: number, z1: number, color: string): void => {
@@ -4840,8 +5079,11 @@ export class Game {
       ctx.fill();
     };
 
+    // Cull distance follows the zoom so a pinch-out still fills the corners
+    // without pushing the whole city through the canvas at 10 Hz.
+    const viewScale = 0.52 / scale;
     const far = (x: number, z: number, range: number): boolean =>
-      Math.hypot(x - worldX, z - worldZ) > range;
+      Math.hypot(x - worldX, z - worldZ) > Math.min(340, range * viewScale);
 
     // Sea and the developed west-bank district beyond the causeway.
     poly(this.city.worldMinX, WEST_DISTRICT_MIN_X, this.city.worldMinZ, this.city.worldMaxZ, '#173b4d');
@@ -4983,14 +5225,16 @@ export class Game {
       ctx.restore();
     }
 
-    // Keep north fixed and rotate the player marker to show the true heading.
+    // The marker points the way the player or car is actually facing. The
+    // negative heading is the mirror fix: facing +x now points left, just like
+    // it does on the corrected map. Heading-up adds the map rotation.
     const heading = this.mode === 'drive' ? this.carYaw : this.player.yaw;
     ctx.fillStyle = '#5ad45a';
     ctx.strokeStyle = 'rgba(8, 14, 10, 0.9)';
     ctx.lineWidth = 1.5;
     ctx.save();
     ctx.translate(size / 2, size / 2);
-    ctx.rotate(heading);
+    ctx.rotate(-heading + mapRotation);
     ctx.beginPath();
     ctx.moveTo(0, -8);
     ctx.lineTo(-5.5, 5.5);
@@ -4999,6 +5243,22 @@ export class Game {
     ctx.fill();
     ctx.stroke();
     ctx.restore();
+
+    // North tick on the rim, so heading-up still tells you where north is.
+    const northX = size / 2 + Math.sin(mapRotation) * (size / 2 - 13);
+    const northY = size / 2 - Math.cos(mapRotation) * (size / 2 - 13);
+    ctx.save();
+    ctx.fillStyle = 'rgba(12, 19, 26, 0.84)';
+    ctx.beginPath();
+    ctx.arc(northX, northY, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(244, 240, 229, 0.86)';
+    ctx.font = '700 9px Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('N', northX, northY + 0.5);
+    ctx.restore();
+
 
     ctx.strokeStyle = this.wanted >= 1 ? 'rgba(255, 80, 60, 0.75)' : 'rgba(255, 210, 74, 0.5)';
     ctx.lineWidth = 2;

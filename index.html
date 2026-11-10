@@ -66,6 +66,7 @@
           </div>
         </div>
         <canvas id="minimap" width="180" height="180"></canvas>
+        <button id="minimap-mode" type="button" aria-label="Toggle map rotation">HDG</button>
         <div id="signal"><span id="signal-state">RED</span><span id="signal-count">9</span></div>
         <div id="objective">
           <div id="objective-title">NEXT MISSION</div>
@@ -82,9 +83,12 @@
             <div>
               <span class="world-map-kicker">9JA ROAM · KANO</span>
               <h2>City map</h2>
-              <p id="map-destination">Tap to pin a destination · drag to pan when zoomed</p>
+              <p id="map-destination">Tap anywhere to pin · drag to pan · pinch or −/+ to zoom</p>
             </div>
             <div class="world-map-actions">
+              <button id="map-zoom-out" type="button" aria-label="Zoom out">−</button>
+              <button id="map-zoom-in" type="button" aria-label="Zoom in">+</button>
+              <button id="map-reset" type="button">FIT</button>
               <button id="map-clear" type="button">CLEAR PIN</button>
               <button id="map-close" type="button" aria-label="Close map">CLOSE</button>
             </div>

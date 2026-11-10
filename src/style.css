@@ -98,6 +98,27 @@ body,
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   pointer-events: auto;
   cursor: pointer;
+  touch-action: none;
+}
+
+#minimap-mode {
+  position: absolute;
+  top: calc(52px + env(safe-area-inset-top));
+  right: calc(18px + env(safe-area-inset-right));
+  z-index: 3;
+  min-width: 30px;
+  padding: 3px 5px;
+  border: 1px solid rgba(255, 210, 74, 0.35);
+  border-radius: 6px;
+  background: rgba(8, 13, 19, 0.84);
+  color: #ffd24a;
+  font: inherit;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
   touch-action: manipulation;
 }
 
@@ -170,6 +191,19 @@ body,
   font-weight: 700;
   letter-spacing: 0.08em;
   cursor: pointer;
+}
+
+.world-map-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+#map-zoom-in,
+#map-zoom-out {
+  min-width: 34px;
+  padding: 7px 0;
+  font-size: 16px;
+  line-height: 1;
 }
 
 #world-map-canvas {
@@ -559,6 +593,14 @@ body,
     width: 104px;
     height: 104px;
     top: calc(40px + env(safe-area-inset-top));
+  }
+
+  #minimap-mode {
+    top: calc(44px + env(safe-area-inset-top));
+    right: calc(17px + env(safe-area-inset-right));
+    min-width: 26px;
+    padding: 2px 4px;
+    font-size: 7px;
   }
 }
 
