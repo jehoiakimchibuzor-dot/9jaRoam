@@ -128,6 +128,22 @@ interface ChutePickup {
   respawn: number;
 }
 
+/**
+ * A parking bay at the airport. When its aircraft is flown away, wrecked or
+ * destroyed, a fresh one is rolled out after a short delay so the field never
+ * runs empty.
+ */
+interface AirportAircraftSpawn {
+  kind: 'jet' | 'stunt' | 'chopper';
+  color: number;
+  x: number;
+  z: number;
+  yaw: number;
+  saveId: string;
+  vehicle: VehicleRig | null;
+  respawn: number;
+}
+
 /** An aircraft the player jumped out of; it keeps flying on its own. */
 interface PilotlessAircraft {
   vehicle: VehicleRig;
@@ -282,6 +298,7 @@ export class Game {
   private armour = 0;
   private armourPickups: ArmourPickup[] = [];
   private chutePickups: ChutePickup[] = [];
+  private airportAircraft: AirportAircraftSpawn[] = [];
   private pilotlessAircraft: PilotlessAircraft[] = [];
   private fall: FallState | null = null;
   private parachuteMesh: THREE.Group | null = null;
@@ -532,44 +549,36 @@ export class Game {
       this.scene.add(vehicle.group);
     }
 
-    // Spawn Airport Aircraft Rigs — parked relative to the field centre so a
-    // relocated airport drags its aircraft along with it.
-    const jet = createShamalJet(0x1e3a60);
-    // West apron, clear of the hangar and the runway strip.
-    jet.group.position.set(AIRPORT_X - 80, 0.1, AIRPORT_Z - 30);
-    jet.group.rotation.y = Math.PI / 2;
-    ensureRigHealth(jet);
-    jet.group.userData.saveId = 'airport-shamal-jet';
-    if (jet.driver) jet.driver.visible = false;
-    this.scene.add(jet.group);
-    this.drivableVehicles.push(jet);
-
-    const chopper = createMaverickHelicopter(0x2d4838);
-    // Parked on the helipad.
-    chopper.group.position.set(AIRPORT_X + 80, 0.1, AIRPORT_Z + 100);
-    chopper.group.rotation.y = 0;
-    ensureRigHealth(chopper);
-    chopper.group.userData.saveId = 'airport-maverick-chopper';
-    if (chopper.driver) chopper.driver.visible = false;
-    this.scene.add(chopper.group);
-    this.drivableVehicles.push(chopper);
-
-    const stuntPlane = createStuntPlane(0xd03525);
-    // Open apron between the terminal and the hangars, off the runway.
-    stuntPlane.group.position.set(AIRPORT_X + 60, 0.1, AIRPORT_Z - 70);
-    stuntPlane.group.rotation.y = -Math.PI / 2;
-    ensureRigHealth(stuntPlane);
-    stuntPlane.group.userData.saveId = 'airport-stunt-plane';
-    if (stuntPlane.driver) stuntPlane.driver.visible = false;
-    this.scene.add(stuntPlane.group);
-    this.drivableVehicles.push(stuntPlane);
+    // Airport aircraft bays. Each bay rolls out a fresh aircraft when the
+    // previous one is flown away, wrecked or destroyed, so returning to the
+    // field never finds an empty apron. Extra aircraft are spread around the
+    // apron, terminal and helipad rather than all clustered in one corner.
+    const airportSpecs: Array<Omit<AirportAircraftSpawn, 'vehicle' | 'respawn'>> = [
+      { kind: 'jet', color: 0x1e3a60, x: AIRPORT_X - 80, z: AIRPORT_Z - 30, yaw: Math.PI / 2, saveId: 'airport-shamal-jet' },
+      { kind: 'jet', color: 0x6a1f2a, x: AIRPORT_X - 80, z: AIRPORT_Z - 85, yaw: Math.PI / 2, saveId: 'airport-shamal-jet-2' },
+      { kind: 'jet', color: 0x1b5e4a, x: AIRPORT_X + 70, z: AIRPORT_Z - 200, yaw: 0, saveId: 'airport-shamal-jet-3' },
+      { kind: 'stunt', color: 0xd03525, x: AIRPORT_X + 60, z: AIRPORT_Z - 70, yaw: -Math.PI / 2, saveId: 'airport-stunt-plane' },
+      { kind: 'stunt', color: 0xe8b62c, x: AIRPORT_X + 105, z: AIRPORT_Z - 35, yaw: -Math.PI / 2, saveId: 'airport-stunt-plane-2' },
+      { kind: 'stunt', color: 0x2f6fd0, x: AIRPORT_X + 90, z: AIRPORT_Z + 150, yaw: 0, saveId: 'airport-stunt-plane-3' },
+      { kind: 'chopper', color: 0x2d4838, x: AIRPORT_X + 80, z: AIRPORT_Z + 100, yaw: 0, saveId: 'airport-maverick-chopper' }
+    ];
+    this.airportAircraft = airportSpecs.map((spec) => ({
+      ...spec,
+      vehicle: null,
+      respawn: 0
+    }));
+    for (const bay of this.airportAircraft) this.spawnAirportAircraft(bay);
 
     // Free parachute packs beside the airport aircraft. You need one BEFORE
     // you take off: a bail-out without a chute is a one-way trip to the tarmac.
     this.chutePickups.push(
-      this.createChutePickup(AIRPORT_X - 80, AIRPORT_Z - 36),
-      this.createChutePickup(AIRPORT_X + 84, AIRPORT_Z + 100),
-      this.createChutePickup(AIRPORT_X + 60, AIRPORT_Z - 74)
+      this.createChutePickup(AIRPORT_X - 94, AIRPORT_Z - 30),
+      this.createChutePickup(AIRPORT_X - 94, AIRPORT_Z - 85),
+      this.createChutePickup(AIRPORT_X + 82, AIRPORT_Z - 210),
+      this.createChutePickup(AIRPORT_X + 84, AIRPORT_Z + 112),
+      this.createChutePickup(AIRPORT_X + 60, AIRPORT_Z - 82),
+      this.createChutePickup(AIRPORT_X + 105, AIRPORT_Z - 46),
+      this.createChutePickup(AIRPORT_X + 90, AIRPORT_Z + 138)
     );
 
     this.interiors = new Interiors(this.scene, this.city);
@@ -1098,6 +1107,7 @@ export class Game {
       if (!pickup.taken) pickup.group.rotation.y += dt * 1.3;
     }
     this.updateChutePickups(dt);
+    this.updateAirportAircraft(dt);
     this.updatePilotlessAircraft(dt);
     this.interiors.update(dt);
 
@@ -1284,6 +1294,9 @@ export class Game {
   }
 
   private updateFoot(dt: number, a: boolean, b: boolean, c: boolean, d: boolean, e: boolean, f: boolean, r: boolean): void {
+    // Defensive: a canopy must never stay attached once the player is back on
+    // foot, even if a teleport/debug path skipped the normal landing handler.
+    if (this.parachuteMesh?.visible) this.parachuteMesh.visible = false;
     this.input.setButtonLabel('btn-gas', 'GAS');
     this.input.setButtonLabel('btn-c', 'JUMP');
     this.input.setButtonLabel('btn-d', 'CROUCH');
@@ -2339,14 +2352,17 @@ export class Game {
       const ghost = this.pilotlessAircraft[i];
       const vehicle = ghost.vehicle;
       const position = vehicle.group.position;
-      ghost.speed = Math.max(9, ghost.speed - 1.4 * dt);
+      ghost.speed = Math.max(8, ghost.speed - 2.4 * dt);
       const fwd = this.moveFwd.set(Math.sin(ghost.yaw), 0, Math.cos(ghost.yaw));
       position.addScaledVector(fwd, ghost.speed * dt);
 
-      // Wings level, nose settles, then a lazy descent back to the ground.
-      ghost.pitch += (0 - ghost.pitch) * Math.min(1, dt * 0.8);
-      ghost.roll += (0 - ghost.roll) * Math.min(1, dt * 0.9);
-      ghost.verticalSpeed += (-1.6 - ghost.verticalSpeed) * Math.min(1, dt * 0.25);
+      // The empty aircraft is out of trim. The nose drops, one wing falls and
+      // it dives at the ground instead of cruising on like an invisible pilot
+      // is still holding the stick.
+      ghost.pitch += (0.62 - ghost.pitch) * Math.min(1, dt * 1.3);
+      ghost.roll += (-0.55 - ghost.roll) * Math.min(1, dt * 0.9);
+      ghost.yaw -= 0.32 * dt;
+      ghost.verticalSpeed += (-28 - ghost.verticalSpeed) * Math.min(1, dt * 1.6);
       ghost.altitude = Math.max(0, ghost.altitude + ghost.verticalSpeed * dt);
 
       // Keep the rotors/propellers turning so the empty aircraft still reads
@@ -2372,10 +2388,80 @@ export class Game {
         position.x > this.city.worldMaxX + 120 ||
         position.z < this.city.worldMinZ - 120 ||
         position.z > this.city.worldMaxZ + 120;
-      if ((ghost.altitude <= 0.05 && ghost.verticalSpeed <= 0) || outside) {
-        if (ghost.altitude <= 0.05) position.y = groundY;
+      if (ghost.altitude <= 0.05 && ghost.verticalSpeed <= 0) {
+        position.y = groundY;
+        this.crashPilotlessAircraft(vehicle, position);
+        this.pilotlessAircraft.splice(i, 1);
+      } else if (outside) {
+        this.drivableVehicles = this.drivableVehicles.filter((v) => v !== vehicle);
+        this.scene.remove(vehicle.group);
         this.pilotlessAircraft.splice(i, 1);
       }
+    }
+  }
+
+  private crashPilotlessAircraft(vehicle: VehicleRig, position: THREE.Vector3): void {
+    this.spawnExplosion(position);
+    this.spawnExplosion(position.clone().add(new THREE.Vector3(2.6, 0, -1.8)));
+    this.drivableVehicles = this.drivableVehicles.filter((v) => v !== vehicle);
+    this.scene.remove(vehicle.group);
+
+    const distance = this.player.group.position.distanceTo(position);
+    if (distance < 22) {
+      this.damagePlayer(clamp(140 * (1 - distance / 22), 15, 140));
+    }
+    if (distance < 220) {
+      this.showToast('AIRCRAFT DOWN');
+      this.setHint('The pilotless aircraft hit the ground and exploded.');
+    }
+  }
+
+  private spawnAirportAircraft(bay: AirportAircraftSpawn): VehicleRig {
+    const vehicle =
+      bay.kind === 'jet'
+        ? createShamalJet(bay.color)
+        : bay.kind === 'chopper'
+          ? createMaverickHelicopter(bay.color)
+          : createStuntPlane(bay.color);
+    vehicle.group.position.set(bay.x, 0.1, bay.z);
+    vehicle.group.rotation.y = bay.yaw;
+    ensureRigHealth(vehicle);
+    vehicle.group.userData.saveId = bay.saveId;
+    if (vehicle.driver) vehicle.driver.visible = false;
+    this.scene.add(vehicle.group);
+    this.drivableVehicles.push(vehicle);
+    bay.vehicle = vehicle;
+    bay.respawn = 0;
+    return vehicle;
+  }
+
+  /**
+   * Keep the airport bays stocked. A bay empties when its aircraft leaves the
+   * apron (even if the player is still flying it), is wrecked, or disappears
+   * in an explosion, and a replacement is rolled out shortly afterwards.
+   */
+  private updateAirportAircraft(dt: number): void {
+    for (const bay of this.airportAircraft) {
+      if (bay.vehicle) {
+        const vehicle = bay.vehicle;
+        const removed = !this.drivableVehicles.includes(vehicle);
+        const distance = Math.hypot(
+          vehicle.group.position.x - bay.x,
+          vehicle.group.position.z - bay.z
+        );
+        if (removed || vehicle.wrecked) {
+          bay.vehicle = null;
+          bay.respawn = 3.5;
+        } else if (distance > 45) {
+          // Let the player keep flying the aircraft they took while a fresh
+          // one is prepared back at the field.
+          bay.vehicle = null;
+          bay.respawn = 9;
+        }
+        continue;
+      }
+      bay.respawn -= dt;
+      if (bay.respawn <= 0) this.spawnAirportAircraft(bay);
     }
   }
 

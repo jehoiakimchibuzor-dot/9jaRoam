@@ -1192,19 +1192,29 @@ function sweptFin(
   dorsalLength = 0,
   rootDrop = 0
 ): THREE.Mesh {
-  const tipRadius = Math.max(0.05, tipChord / 2);
   const tipCentreZ = -sweep;
-  const dorsalRise = dorsalLength * 0.3;
+  const tipRadius = Math.min(tipChord * 0.34, height * 0.11);
+  const tipFront = tipCentreZ + tipChord / 2;
+  const tipBack = tipCentreZ - tipChord / 2;
+  const dorsalRise = Math.max(0.34, dorsalLength * 0.28);
   const shape = new THREE.Shape();
   // The dorsal fillet starts well ahead of the fin and ramps up into the
   // leading edge, so the tail grows out of the fuselage instead of standing on
   // it like a fence post.
   shape.moveTo(rootChord / 2 + dorsalLength, 0);
-  shape.lineTo(rootChord / 2, dorsalRise);
-  // Sweep up to the start of the rounded tip.
-  shape.lineTo(tipCentreZ + tipRadius, height - tipRadius);
-  // Round the top of the fin; absarc goes over the crown from front to back.
-  shape.absarc(tipCentreZ, height - tipRadius, tipRadius, 0, Math.PI, false);
+  shape.quadraticCurveTo(
+    rootChord / 2 + dorsalLength * 0.18,
+    dorsalRise * 0.72,
+    rootChord / 2,
+    dorsalRise
+  );
+  // Moderate, nearly straight leading-edge sweep up to the tip.
+  shape.lineTo(tipFront, height - tipRadius);
+  // Slightly squared, rounded crown instead of a pure semicircle: real fins
+  // have a short flat cap between two tight corner radii.
+  shape.quadraticCurveTo(tipFront + tipRadius * 0.2, height, tipFront + tipRadius * 0.55, height);
+  shape.lineTo(tipBack - tipRadius * 0.55, height);
+  shape.quadraticCurveTo(tipBack - tipRadius * 0.2, height, tipBack, height - tipRadius);
   // Back down the trailing edge; the root edge can slope down so the fin sits
   // inside the tapering tail cone all the way to the rear.
   shape.lineTo(-rootChord / 2, -rootDrop);
@@ -1213,7 +1223,7 @@ function sweptFin(
   const geo = new THREE.ExtrudeGeometry(shape, {
     depth: thickness,
     bevelEnabled: false,
-    curveSegments: 6
+    curveSegments: 8
   });
   // Centre the extrusion on the fuselage centre line, then stand the shape up:
   // its chord axis becomes +z (nose) and its thickness axis becomes x.
@@ -1221,6 +1231,84 @@ function sweptFin(
   geo.rotateY(-Math.PI / 2);
   const mesh = new THREE.Mesh(geo, mat(color, 0.45));
   mesh.position.set(0, y, z);
+  parent.add(mesh);
+  return mesh;
+}
+
+/**
+ * Lofted rear fuselage. The crown stays almost level while the belly sweeps up
+ * into the tail cone, which is what gives an airliner its upswept underside
+ * instead of the symmetrical pencil taper of two stacked cones.
+ *
+ * `bottomShell` builds only the lower half of the loft (used for the blue
+ * belly), slightly proud of the white fuselage so it never z-fights.
+ */
+function loftedRearFuselage(
+  parent: THREE.Object3D,
+  color: number,
+  zStart: number,
+  zEnd: number,
+  startRadius: number,
+  endRadius: number,
+  startTop: number,
+  startBottom: number,
+  endTop: number,
+  endBottom: number,
+  options: { roughness?: number; segments?: number; bottomShell?: boolean } = {}
+): THREE.Mesh {
+  const rings = 14;
+  const bottomShell = options.bottomShell ?? false;
+  const segments = options.segments ?? 16;
+  const radialPoints = bottomShell ? Math.ceil(segments / 2) + 1 : segments;
+  const pad = bottomShell ? 0.025 : 0;
+  const positions: number[] = [];
+  const indices: number[] = [];
+
+  for (let i = 0; i <= rings; i += 1) {
+    const t = i / rings;
+    const z = zStart + (zEnd - zStart) * t;
+    const radius = startRadius + (endRadius - startRadius) * Math.pow(t, 1.15) + pad;
+    const top = startTop + (endTop - startTop) * t + pad;
+    const bottom = startBottom + (endBottom - startBottom) * Math.pow(t, 1.3) - pad;
+    const centreY = (top + bottom) / 2;
+    const halfHeight = Math.max(0.02, (top - bottom) / 2);
+    const arcStart = bottomShell ? Math.PI : 0;
+    const arcSpan = Math.PI * (bottomShell ? 1 : 2);
+    for (let j = 0; j < radialPoints; j += 1) {
+      const angle =
+        arcStart + (arcSpan * j) / (bottomShell ? radialPoints - 1 : radialPoints);
+      positions.push(Math.cos(angle) * radius, centreY + Math.sin(angle) * halfHeight, z);
+    }
+  }
+
+  for (let i = 0; i < rings; i += 1) {
+    for (let j = 0; j < (bottomShell ? radialPoints - 1 : radialPoints); j += 1) {
+      const next = bottomShell ? j + 1 : (j + 1) % radialPoints;
+      const a = i * radialPoints + j;
+      const b = i * radialPoints + next;
+      const c = (i + 1) * radialPoints + j;
+      const d = (i + 1) * radialPoints + next;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+
+  if (!bottomShell) {
+    // Closed tip: fan the last ring into a centre point.
+    const centreIndex = positions.length / 3;
+    positions.push(0, (endTop + endBottom) / 2, zEnd);
+    const lastRing = rings * radialPoints;
+    for (let j = 0; j < radialPoints; j += 1) {
+      const a = lastRing + j;
+      const b = lastRing + ((j + 1) % radialPoints);
+      indices.push(a, centreIndex, b);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  const mesh = new THREE.Mesh(geometry, mat(color, options.roughness ?? 0.42));
   parent.add(mesh);
   return mesh;
 }
@@ -1243,8 +1331,9 @@ export function createShamalJet(color = 0x1d5fa8): VehicleRig {
   body.position.set(0, 1.95, 0);
   group.add(body);
 
-  // Blue belly fairing: sits just proud of the round fuselage underside.
-  rbox(group, 1.62, 0.72, 11.8, 0.3, blue, 0, 1.32, 0);
+  // Blue belly fairing: sits just proud of the round fuselage underside and
+  // runs all the way into the rear loft below.
+  rbox(group, 1.62, 0.72, 12.1, 0.3, blue, 0, 1.32, 0.05);
 
   // Nose: the fuselage tapers into a blunt radome. An airliner nose is rounded,
   // not a cone — the old cone is what made the whole aircraft look like a
@@ -1261,13 +1350,14 @@ export function createShamalJet(color = 0x1d5fa8): VehicleRig {
   radome.scale.set(1, 0.88, 0.95);
   group.add(radome);
 
-  const tailCone = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.95, 0.34, 3.6, 14),
-    mat(white, 0.42)
-  );
-  tailCone.rotation.x = -Math.PI / 2;
-  tailCone.position.set(0, 1.95, -8.0);
-  group.add(tailCone);
+  // Rear fuselage: level crown, upswept belly. The old cone was a symmetric
+  // taper (and was even wound wide-at-the-back), which is why the tail looked
+  // like a pencil sharpener rather than the reference airliner.
+  loftedRearFuselage(group, white, -6.05, -10.0, 0.95, 0.29, 2.9, 1.0, 2.8, 2.46);
+  loftedRearFuselage(group, blue, -5.95, -9.55, 0.95, 0.34, 2.9, 1.0, 2.8, 2.4, {
+    roughness: 0.44,
+    bottomShell: true
+  });
 
   // Cockpit visor and side glass, sitting on the crown where the taper starts.
   rbox(group, 1.3, 0.34, 0.55, 0.08, windowColor, 0, 2.62, 6.25);
@@ -1316,22 +1406,32 @@ export function createShamalJet(color = 0x1d5fa8): VehicleRig {
   }
 
   // --------------------------------------------------------------------- tail
-  // Real airliner tail: a swept, tapered fin with a rounded tip and a dorsal
-  // fillet that grows out of the fuselage crown, plus small swept tailplanes
-  // low on the rear cone. The old version was a tilted box slab.
-  sweptFin(group, 4.2, 3.0, 1.2, 1.75, 0.24, white, 2.55, -7.7, 2.4, 0.25);
-  // Horizontal stabilisers, mounted low on the tail cone and swept back.
-  sweptWing(group, 1, 5.0, 2.4, 1.0, 0.85, 0.15, white, 2.3, -8.4);
-  sweptWing(group, -1, 5.0, 2.4, 1.0, 0.85, 0.15, white, 2.3, -8.4);
+  // Reference tail: a tall fin with a moderate straight sweep, a rounded but
+  // slightly squared crown, and a long dorsal fillet blending into the spine.
+  sweptFin(group, 4.35, 3.1, 1.05, 1.45, 0.26, white, 2.55, -7.6, 2.6, 0.3);
+  // Horizontal stabilisers sit low on the tail cone, with the bullet-shaped
+  // root fairing the reference has where the tailplane meets the fuselage.
+  sweptWing(group, 1, 4.6, 2.3, 0.9, 0.9, 0.16, white, 2.28, -8.6);
+  sweptWing(group, -1, 4.6, 2.3, 0.9, 0.9, 0.16, white, 2.28, -8.6);
+  const tailFairing = new THREE.Mesh(
+    new THREE.SphereGeometry(0.5, 16, 10),
+    mat(white, 0.42)
+  );
+  tailFairing.scale.set(0.72, 0.56, 1.85);
+  tailFairing.position.set(0, 2.28, -8.6);
+  group.add(tailFairing);
+  // Small blade antenna just ahead of the fin, another reference detail.
+  const antenna = box(group, 0.06, 0.55, 0.28, white, 0, 3.05, -5.55);
+  antenna.rotation.x = -0.18;
 
   // Globe emblem on both sides of the fin.
   for (const side of [-1, 1]) {
     const globe = new THREE.Mesh(new THREE.CircleGeometry(0.6, 20), mat(blue, 0.5));
     globe.rotation.y = side * Math.PI / 2;
-    globe.position.set(side * 0.13, 3.95, -8.05);
+    globe.position.set(side * 0.145, 3.95, -8.07);
     group.add(globe);
-    const meridian = box(group, 0.04, 0.1, 1.1, white, side * 0.15, 3.95, -8.05);
-    const equator = box(group, 0.04, 1.1, 0.09, white, side * 0.15, 3.95, -8.05);
+    const meridian = box(group, 0.04, 0.1, 1.1, white, side * 0.165, 3.95, -8.07);
+    const equator = box(group, 0.04, 1.1, 0.09, white, side * 0.165, 3.95, -8.07);
     meridian.renderOrder = 1;
     equator.renderOrder = 1;
   }
