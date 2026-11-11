@@ -1583,7 +1583,8 @@ export class Game {
     if (isChopper) {
       const climb = state.cPressed || state.cHeld || stickY < -0.35;
       const dive = state.dHeld || stickY > 0.35;
-      const targetRotorSpeed = gas || climb ? 26 : 8;
+      // GAS is the throttle: hold it to spin the rotors faster AND climb.
+      const targetRotorSpeed = gas ? 30 : (climb ? 26 : 8);
       aircraft.rotorSpeed += (targetRotorSpeed - aircraft.rotorSpeed) * Math.min(1.0, dt * 2.5);
 
       if (aircraft.rotors) {
@@ -1593,14 +1594,15 @@ export class Game {
         for (const s of aircraft.spinners) s.rotation.x += aircraft.rotorSpeed * 1.5 * dt;
       }
 
-      const liftPower = aircraft.rotorSpeed / 26;
-      // Hover at mid rotor speed; climb/dive increases/decreases vertical speed
+      const liftPower = aircraft.rotorSpeed / 30;
       const hoverSpeed = 24;
-      if (climb && !dive) {
+      if (gas || (climb && !dive)) {
+        // GAS or manual climb: gain altitude smoothly.
         aircraft.verticalSpeed += 14 * liftPower * dt;
       } else if (dive && !climb) {
         aircraft.verticalSpeed -= 14 * dt;
       } else {
+        // Auto-hold altitude near hover: PD on rotor speed error.
         const hoverDiff = aircraft.rotorSpeed - hoverSpeed;
         const correction = hoverDiff * 0.45;
         aircraft.verticalSpeed += correction * dt;
@@ -3969,8 +3971,10 @@ export class Game {
     const sin = Math.sin(rig.group.rotation.y);
     const lx = dx * cos - dz * sin;
     const lz = dx * sin + dz * cos;
-    const halfW = rig.width / 2 + 0.38;
-    const halfL = rig.length / 2 + 0.38;
+    // Cap foot-interaction collision radius so large aircraft don't block
+    // the player from walking up to and entering them.
+    const halfW = Math.min(rig.width / 2 + 0.38, 2.6);
+    const halfL = Math.min(rig.length / 2 + 0.38, 3.2);
     if (Math.abs(lx) >= halfW || Math.abs(lz) >= halfL) return;
     const px = halfW - Math.abs(lx);
     const pz = halfL - Math.abs(lz);
@@ -4744,8 +4748,34 @@ export class Game {
     this.worldMapElement?.setAttribute('aria-hidden', String(!open));
     if (open) {
       this.input.reset();
+      this.fitWorldMapCanvas();
+      this.constrainWorldMapPan(this.worldMapCanvasSize().width, this.worldMapCanvasSize().height);
       this.drawWorldMap();
     }
+  }
+
+  // The map panel is a flex box, so its real size depends on the phone and the
+  // safe areas. Match the canvas backing store to the box that is actually
+  // displayed; otherwise the 900x700 bitmap is letterboxed and the city is
+  // squeezed into a stamp in the middle of a wide landscape screen.
+  private fitWorldMapCanvas(): void {
+    const ctx = this.worldMapCtx;
+    const canvas = ctx?.canvas;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width < 40 || rect.height < 40) return;
+    const dpr = clamp(window.devicePixelRatio || 1, 1, 2);
+    const width = Math.round(rect.width * dpr);
+    const height = Math.round(rect.height * dpr);
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+  }
+
+  private worldMapCanvasSize(): { width: number; height: number } {
+    const canvas = this.worldMapCtx?.canvas;
+    return { width: canvas?.width ?? 900, height: canvas?.height ?? 700 };
   }
 
   private updateMapDestinationLabel(): void {

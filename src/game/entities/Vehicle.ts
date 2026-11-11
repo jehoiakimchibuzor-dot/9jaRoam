@@ -1264,11 +1264,16 @@ export function createShamalJet(color = 0x1d5fa8): VehicleRig {
 
   // --------------------------------------------------------------------- tail
   // White swept fin carrying the blue globe emblem from the reference.
-  const fin = rbox(group, 0.22, 3.3, 2.7, 0.1, white, 0, 3.55, -7.0);
-  fin.rotation.x = -0.16;
-  rbox(group, 0.24, 0.5, 2.4, 0.06, blue, 0, 5.0, -7.3);
-  sweptWing(group, 1, 5.4, 1.7, 0.9, 0.7, 0.14, white, 2.35, -7.7);
-  sweptWing(group, -1, 5.4, 1.7, 0.9, 0.7, 0.14, white, 2.35, -7.7);
+  // Taller fin with stronger sweep-back, matching the low-poly airliner look.
+  const fin = rbox(group, 0.22, 4.2, 3.0, 0.1, white, 0, 4.05, -6.6);
+  fin.rotation.x = -0.25;
+  // Blue cheatline band across the fin.
+  rbox(group, 0.24, 0.55, 2.6, 0.06, blue, 0, 5.55, -7.0);
+  // Dorsal fairing where the fin meets the fuselage crown.
+  rbox(group, 0.18, 1.4, 2.2, 0.08, white, 0, 2.75, -5.2);
+  // Horizontal stabilizers at the base of the fin, swept back.
+  sweptWing(group, 1, 6.0, 2.0, 1.0, 0.8, 0.14, white, 2.1, -7.9);
+  sweptWing(group, -1, 6.0, 2.0, 1.0, 0.8, 0.14, white, 2.1, -7.9);
 
   // Globe emblem on both sides of the fin.
   for (const side of [-1, 1]) {
