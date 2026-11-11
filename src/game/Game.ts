@@ -374,7 +374,7 @@ export class Game {
   private mapPinchDistance = 0;
   private mapPinchGesture = false;
   private pinnedWaypoint: THREE.Vector3 | null = null;
-  private dprCap = IS_ANDROID ? 2.5 : 2;
+  private dprCap = IS_ANDROID ? 2.2 : 2;
   private perfTimer = 0;
   private swimming = false;
   private waterWarned = false;
@@ -936,20 +936,25 @@ export class Game {
     this.perfTimer = 0;
     const dpr = this.renderer.getPixelRatio();
     // Never render below CSS resolution on a phone: a sub-1 ratio turns the
-    // whole 3D view into a blurry upscale. The game is CPU-bound at ~35 fps,
-    // so the old 45 fps gate only cost sharpness without buying frames.
-    // Phones normally report a DPR around 2.5-3; capping at 1.5 was rendering
-    // barely over half the panel's pixels and the upscale is exactly what made
-    // the game look soft. Stay near native and let the fps guard trim later.
-    const minDpr = IS_ANDROID ? 1.4 : 1;
-    const maxDpr = Math.min(window.devicePixelRatio || 1, IS_ANDROID ? 2.5 : 2);
-    const lowFps = IS_ANDROID ? 30 : 28;
-    const highFps = IS_ANDROID ? 55 : 54;
+    // whole 3D view into a blurry upscale. Phones normally report a DPR around
+    // 2.5-3, so the old 1.5 cap rendered barely over half the panel's pixels and
+    // the upscale is exactly what made the game look soft. 2.2 is around native
+    // for a 2.75-DPR panel without the fill cost of full 2.5.
+    //
+    // Measurements on the Mi 11: ~34 fps at 1.5, ~32 at 2.0, ~24 at 2.5. The
+    // old adaptive loop dropped to 1.4 whenever fps < 30 and then never climbed
+    // back because recovery needed 55 fps, which the phone never reaches. So
+    // the resolution only ever fell. Now it starts at 2.2 and may trim to 1.8
+    // only for genuinely bad frames; it does not oscillate back up.
+    const minDpr = IS_ANDROID ? 1.8 : 1;
+    const maxDpr = Math.min(window.devicePixelRatio || 1, IS_ANDROID ? 2.2 : 2);
+    const lowFps = IS_ANDROID ? 24 : 28;
+    const highFps = IS_ANDROID ? 34 : 54;
     if (this.fps < lowFps && dpr > minDpr + 0.01) {
       this.dprCap = Math.max(minDpr, dpr - 0.1);
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.dprCap));
       this.renderer.setSize(window.innerWidth, window.innerHeight, false);
-    } else if (this.fps > highFps && dpr < maxDpr - 0.01) {
+    } else if (!IS_ANDROID && this.fps > highFps && dpr < maxDpr - 0.01) {
       this.dprCap = Math.min(maxDpr, dpr + 0.1);
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.dprCap));
       this.renderer.setSize(window.innerWidth, window.innerHeight, false);
