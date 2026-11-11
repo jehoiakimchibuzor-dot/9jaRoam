@@ -43,6 +43,80 @@ function box(
   return mesh;
 }
 
+/** Swept, tapered horizontal surface (wing or tailplane) pointing down +z. */
+function sweptWing(
+  parent: THREE.Object3D,
+  dir: 1 | -1,
+  span: number,
+  rootChord: number,
+  tipChord: number,
+  sweep: number,
+  thickness: number,
+  color: number,
+  y: number,
+  z: number
+): THREE.Mesh {
+  const points: Array<[number, number]> = [
+    [0, -rootChord / 2],
+    [dir * span, -tipChord / 2 + sweep],
+    [dir * span, tipChord / 2 + sweep],
+    [0, rootChord / 2]
+  ];
+  if (dir < 0) points.reverse();
+  const shape = new THREE.Shape();
+  shape.moveTo(points[0][0], points[0][1]);
+  for (let i = 1; i < points.length; i += 1) shape.lineTo(points[i][0], points[i][1]);
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false });
+  geo.rotateX(-Math.PI / 2);
+  const mesh = new THREE.Mesh(
+    geo,
+    new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.05 })
+  );
+  mesh.position.set(0, y, z);
+  parent.add(mesh);
+  return mesh;
+}
+
+/** Swept vertical fin with a rounded tip and a dorsal fillet. */
+function sweptFin(
+  parent: THREE.Object3D,
+  height: number,
+  rootChord: number,
+  tipChord: number,
+  sweep: number,
+  thickness: number,
+  color: number,
+  y: number,
+  z: number,
+  dorsalLength = 0,
+  rootDrop = 0
+): THREE.Mesh {
+  const tipRadius = Math.max(0.05, tipChord / 2);
+  const tipCentreZ = -sweep;
+  const shape = new THREE.Shape();
+  shape.moveTo(rootChord / 2 + dorsalLength, 0);
+  shape.lineTo(rootChord / 2, dorsalLength * 0.3);
+  shape.lineTo(tipCentreZ + tipRadius, height - tipRadius);
+  shape.absarc(tipCentreZ, height - tipRadius, tipRadius, 0, Math.PI, false);
+  shape.lineTo(-rootChord / 2, -rootDrop);
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: thickness,
+    bevelEnabled: false,
+    curveSegments: 6
+  });
+  geo.translate(0, 0, -thickness / 2);
+  geo.rotateY(-Math.PI / 2);
+  const mesh = new THREE.Mesh(
+    geo,
+    new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.05 })
+  );
+  mesh.position.set(0, y, z);
+  parent.add(mesh);
+  return mesh;
+}
+
 /** A single low-poly airliner pointing down +z. */
 function buildAirliner(livery: number): { group: THREE.Group; beacon: THREE.Mesh } {
   const group = new THREE.Group();
@@ -87,32 +161,26 @@ function buildAirliner(livery: number): { group: THREE.Group; beacon: THREE.Mesh
   // Blue belly, like the reference livery.
   box(group, 1.55, 0.56, 16.2, livery, 0, -0.64, 0.6, 0.65);
 
-  // Tail fin: tall, swept back, white with the blue globe emblem, the same
-  // livery treatment the player-flown jet gets.
-  const fin = new THREE.Mesh(
-    new THREE.BoxGeometry(0.18, 3.6, 3.4),
-    new THREE.MeshStandardMaterial({ color: white, roughness: 0.5 })
-  );
-  fin.position.set(0, 2.3, -7.2);
-  fin.rotation.z = 0.15;
-  group.add(fin);
-  box(group, 0.2, 0.55, 3.0, livery, 0, 4.0, -7.35, 0.55);
+  // Tail fin: tall, swept back, white with the blue globe emblem and a dorsal
+  // fillet, the same livery treatment the player-flown jet gets. The old box
+  // slab read as a fence panel; this is a real tapered aerofoil shape.
+  sweptFin(group, 4.3, 3.6, 1.4, 2.0, 0.22, white, 0.55, -10.2, 2.8, 0.25);
 
   // Globe: blue disc with a white meridian, one on each side of the fin.
   for (const side of [-1, 1]) {
     const globe = new THREE.Mesh(
-      new THREE.CircleGeometry(0.62, 16),
+      new THREE.CircleGeometry(0.58, 16),
       new THREE.MeshStandardMaterial({ color: livery, roughness: 0.5 })
     );
     globe.rotation.y = side * Math.PI / 2;
-    globe.position.set(side * 0.11, 2.35, -6.85);
+    globe.position.set(side * 0.12, 2.3, -10.75);
     group.add(globe);
-    box(group, 0.03, 0.09, 1.05, white, side * 0.13, 2.35, -6.85, 0.5);
+    box(group, 0.03, 0.09, 1.0, white, side * 0.14, 2.3, -10.75, 0.5);
   }
 
-  // Tailplane (horizontal stabilizers)
-  box(group, 7, 0.16, 2.2, white, 0, 0.05, -5.6, 0.5);
-  box(group, 7, 0.12, 1.2, white, 0, 0.15, -6.2, 0.5);
+  // Tailplane (horizontal stabilizers), low on the rear cone and swept back.
+  sweptWing(group, 1, 4.8, 2.6, 1.1, 0.9, 0.14, white, 0.38, -10.8);
+  sweptWing(group, -1, 4.8, 2.6, 1.1, 0.9, 0.14, white, 0.38, -10.8);
 
   // Main wings: two swept halves instead of one straight slab.
   for (const side of [-1, 1]) {

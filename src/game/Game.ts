@@ -72,7 +72,7 @@ import { clamp, pushOutColliders, rayWallDistance } from './systems/Physics';
 import { GameAudio } from './systems/GameAudio';
 import { IS_ANDROID } from './platform';
 
-type Mode = 'foot' | 'drive' | 'entering' | 'exiting';
+type Mode = 'foot' | 'drive' | 'entering' | 'exiting' | 'falling';
 
 export interface GameHud {
   speed: HTMLElement | null;
@@ -117,6 +117,36 @@ interface ArmourPickup {
   z: number;
   taken: boolean;
   spin: number;
+}
+
+/** A free parachute pack left beside the airport aircraft. */
+interface ChutePickup {
+  group: THREE.Group;
+  x: number;
+  z: number;
+  taken: boolean;
+  respawn: number;
+}
+
+/** An aircraft the player jumped out of; it keeps flying on its own. */
+interface PilotlessAircraft {
+  vehicle: VehicleRig;
+  speed: number;
+  altitude: number;
+  verticalSpeed: number;
+  pitch: number;
+  roll: number;
+  yaw: number;
+}
+
+/** Everything about the current bail-out/freefall. */
+interface FallState {
+  deployed: boolean;
+  verticalSpeed: number;
+  forwardSpeed: number;
+  heading: number;
+  chuteT: number;
+  sway: number;
 }
 
 interface Explosion {
@@ -251,6 +281,12 @@ export class Game {
   private health: Health = createHealth(PLAYER_MAX_HP);
   private armour = 0;
   private armourPickups: ArmourPickup[] = [];
+  private chutePickups: ChutePickup[] = [];
+  private pilotlessAircraft: PilotlessAircraft[] = [];
+  private fall: FallState | null = null;
+  private parachuteMesh: THREE.Group | null = null;
+  private chutes = 0;
+  private deathReason = '';
   private explosions: Explosion[] = [];
   private money = 150;
   private bankBalance = STARTING_BANK_BALANCE;
@@ -338,7 +374,7 @@ export class Game {
   private mapPinchDistance = 0;
   private mapPinchGesture = false;
   private pinnedWaypoint: THREE.Vector3 | null = null;
-  private dprCap = IS_ANDROID ? 1.5 : 2;
+  private dprCap = IS_ANDROID ? 2.5 : 2;
   private perfTimer = 0;
   private swimming = false;
   private waterWarned = false;
@@ -527,6 +563,14 @@ export class Game {
     if (stuntPlane.driver) stuntPlane.driver.visible = false;
     this.scene.add(stuntPlane.group);
     this.drivableVehicles.push(stuntPlane);
+
+    // Free parachute packs beside the airport aircraft. You need one BEFORE
+    // you take off: a bail-out without a chute is a one-way trip to the tarmac.
+    this.chutePickups.push(
+      this.createChutePickup(AIRPORT_X - 80, AIRPORT_Z - 36),
+      this.createChutePickup(AIRPORT_X + 84, AIRPORT_Z + 100),
+      this.createChutePickup(AIRPORT_X + 60, AIRPORT_Z - 74)
+    );
 
     this.interiors = new Interiors(this.scene, this.city);
     this.trains = new TrainService(this.scene, this.city);
@@ -894,8 +938,11 @@ export class Game {
     // Never render below CSS resolution on a phone: a sub-1 ratio turns the
     // whole 3D view into a blurry upscale. The game is CPU-bound at ~35 fps,
     // so the old 45 fps gate only cost sharpness without buying frames.
-    const minDpr = IS_ANDROID ? 1.0 : 1;
-    const maxDpr = Math.min(window.devicePixelRatio || 1, IS_ANDROID ? 1.5 : 2);
+    // Phones normally report a DPR around 2.5-3; capping at 1.5 was rendering
+    // barely over half the panel's pixels and the upscale is exactly what made
+    // the game look soft. Stay near native and let the fps guard trim later.
+    const minDpr = IS_ANDROID ? 1.4 : 1;
+    const maxDpr = Math.min(window.devicePixelRatio || 1, IS_ANDROID ? 2.5 : 2);
     const lowFps = IS_ANDROID ? 30 : 28;
     const highFps = IS_ANDROID ? 55 : 54;
     if (this.fps < lowFps && dpr > minDpr + 0.01) {
@@ -1045,6 +1092,8 @@ export class Game {
     for (const pickup of this.armourPickups) {
       if (!pickup.taken) pickup.group.rotation.y += dt * 1.3;
     }
+    this.updateChutePickups(dt);
+    this.updatePilotlessAircraft(dt);
     this.interiors.update(dt);
 
     if (this.reloadWasActive && !this.weapons.reloading) this.setHint('Reloaded');
@@ -1119,6 +1168,10 @@ export class Game {
       this.updateInside(dt, a, b, c, d, e, f, r);
     } else if (this.mode === 'foot') {
       this.updateFoot(dt, a, b, c, d, e, f, r);
+    } else if (this.mode === 'falling') {
+      this.currentInteraction = null;
+      this.currentInteriorPoint = null;
+      this.updateFalling(dt, b, e);
     } else {
       this.currentInteraction = null;
       this.currentInteriorPoint = null;
@@ -1737,14 +1790,20 @@ export class Game {
 
     const currentKmh = Math.round(Math.abs(this.carSpeed) * 3.6);
     const currentAlt = Math.round(aircraft.altitude);
-    this.setHint(`✈️ AIRSPEED: ${currentKmh} KM/H  |  ALTITUDE: ${currentAlt} M`);
+    const chuteStatus = this.chutes > 0 ? `PARACHUTE x${this.chutes}` : 'NO PARACHUTE';
+    this.setHint(
+      `✈️ AIRSPEED: ${currentKmh} KM/H  |  ALTITUDE: ${currentAlt} M  |  ${chuteStatus}`
+    );
 
     this.input.setButtonLabel('btn-gas', isChopper ? 'ROTOR' : 'THRUST');
     this.input.setButtonLabel('btn-c', 'CLIMB');
     this.input.setButtonLabel('btn-d', 'DIVE');
 
     if (b) {
-      this.beginExit();
+      // In the air, EXIT turns into a bail-out: the player jumps and the plane
+      // flies on without them. On the ground it is the normal walk-out.
+      if ((aircraft.altitude ?? 0) > 3.5) this.beginBailOut();
+      else this.beginExit();
     }
   }
 
@@ -1992,6 +2051,11 @@ export class Game {
     this.setHint(
       `${hijack ? 'Hijacking' : 'Entering'} the ${access.label.toLowerCase()}\u2026`
     );
+    // Before take-off, make it obvious whether a chute is in the bag.
+    if (vehicle.kind === 'plane' || vehicle.kind === 'helicopter') {
+      if (this.chutes > 0) this.showToast(`PARACHUTE READY \u00b7 ${this.chutes} IN THE BAG`);
+      else this.showToast('NO PARACHUTE \u00b7 GRAB ONE FROM THE RED RACK');
+    }
   }
 
   private beginExit(): void {
@@ -2018,6 +2082,382 @@ export class Game {
     vehicle.doorOpen = Boolean(vehicle.doorPivot);
     this.audio.door();
     this.setHint(`Getting out of the ${vehicle.access?.label.toLowerCase() ?? 'vehicle'}\u2026`);
+  }
+
+  // ---------------------------------------------------------------- bail out
+  // Pressing EXIT while the aircraft is actually flying throws the player out
+  // instead of teleporting them to the tarmac. The aircraft carries on,
+  // pilotless, while the player freefalls and can open a parachute.
+  private beginBailOut(): void {
+    const aircraft = this.activeVehicle;
+    if (!aircraft) return;
+    const altitude = aircraft.altitude ?? 0;
+    if (altitude < 3.5) {
+      this.beginExit();
+      return;
+    }
+
+    const seat = aircraft.access?.seat ?? new THREE.Vector3(0, 2, 0);
+    const exit = this.vehicleLocalToWorld(aircraft, seat);
+    this.player.group.position.copy(exit);
+    this.player.group.position.y += 0.9;
+    this.player.group.rotation.set(0, this.carYaw, 0);
+    this.player.yaw = this.carYaw;
+    this.player.velocity.set(0, 0, 0);
+    this.player.group.visible = true;
+    this.player.setRiding(true);
+    this.player.setAiming(false);
+
+    // Hand the aircraft over to the "ghost pilot": it keeps its speed and
+    // heading, slowly levels out and eventually settles back onto the ground.
+    this.pilotlessAircraft.push({
+      vehicle: aircraft,
+      speed: Math.max(10, Math.abs(this.carSpeed)),
+      altitude,
+      verticalSpeed: Math.max(-2, Math.min(2, aircraft.verticalSpeed ?? 0)),
+      pitch: aircraft.pitch ?? 0,
+      roll: aircraft.roll ?? 0,
+      yaw: this.carYaw
+    });
+    if (aircraft.driver) aircraft.driver.visible = false;
+    aircraft.doorOpen = false;
+    this.activeVehicle = null;
+
+    this.fall = {
+      deployed: false,
+      verticalSpeed: -1.5,
+      forwardSpeed: Math.max(7, Math.abs(this.carSpeed) * 0.5),
+      heading: this.carYaw,
+      chuteT: 0,
+      sway: 0
+    };
+    this.mode = 'falling';
+    this.carSpeed = 0;
+    this.camYaw = this.carYaw + Math.PI;
+    this.camPitch = 0.2;
+    this.camDist = 7.5;
+    this.input.reset();
+    this.resetActionTracking();
+    this.audio.door();
+    this.audio.siren(false);
+    if (this.chutes > 0) {
+      this.showToast('BAILED OUT \u00b7 TAP B TO OPEN THE CHUTE');
+      this.setHint('Freefall \u2014 tap B for the parachute.');
+    } else {
+      this.showToast('BAILED OUT WITHOUT A PARACHUTE!');
+      this.setHint('No parachute. You are not going to survive this.');
+    }
+  }
+
+  private updateFalling(dt: number, b: boolean, _e: boolean): void {
+    const fall = this.fall;
+    if (!fall) {
+      this.recoverOnFoot();
+      return;
+    }
+    if (b) this.deployParachute();
+
+    const state = this.input.state;
+    const steer = Math.abs(state.moveX) > 0.12 ? state.moveX : 0;
+    const tilt = Math.abs(state.moveY) > 0.12 ? state.moveY : 0;
+
+    if (fall.deployed) {
+      // Canopy flight: a slow, floaty descent that can be steered, exactly the
+      // GTA-style glide. Pulling the stick down dives a little faster.
+      fall.verticalSpeed += ((-4.2 - tilt * 1.6) - fall.verticalSpeed) * Math.min(1, dt * 1.6);
+      fall.forwardSpeed += ((9 + tilt * 2.5) - fall.forwardSpeed) * Math.min(1, dt * 0.9);
+      fall.heading -= steer * 0.9 * dt;
+    } else {
+      // Freefall: gravity builds to terminal velocity while the jump's forward
+      // momentum bleeds away.
+      fall.verticalSpeed = Math.max(-56, fall.verticalSpeed - 26 * dt);
+      fall.forwardSpeed = Math.max(3.5, fall.forwardSpeed * (1 - dt * 0.12));
+      fall.heading -= steer * 0.45 * dt;
+    }
+
+    const position = this.player.group.position;
+    position.x += Math.sin(fall.heading) * fall.forwardSpeed * dt;
+    position.z += Math.cos(fall.heading) * fall.forwardSpeed * dt;
+    position.y += fall.verticalSpeed * dt;
+
+    // Keep the player inside the map while airborne.
+    position.x = clamp(position.x, this.city.worldMinX + 30, this.city.worldMaxX - 30);
+    position.z = clamp(position.z, this.city.worldMinZ + 30, this.city.worldMaxZ - 30);
+
+    this.player.yaw = fall.heading;
+    this.player.group.rotation.y = fall.heading;
+
+    const chute = this.parachuteMesh;
+    if (fall.deployed) {
+      fall.chuteT = Math.min(1, fall.chuteT + dt * 3.2);
+      fall.sway += dt * 2.1;
+      this.player.canopyPose(steer);
+      if (chute) {
+        chute.visible = true;
+        const open = 0.5 + 0.5 * easeOut(fall.chuteT);
+        chute.scale.setScalar(open);
+        chute.rotation.z = Math.sin(fall.sway) * 0.07;
+        chute.rotation.x = Math.sin(fall.sway * 0.73) * 0.05;
+      }
+      this.player.group.rotation.z = Math.sin(fall.sway * 0.9) * 0.03;
+    } else {
+      this.player.freefallPose(this.elapsed);
+      this.player.group.rotation.z = 0;
+    }
+
+    const groundY = this.city.groundHeightAt(position.x, position.z);
+    const axis = roadAxisForYaw(this.player.yaw);
+    const waterY = this.city.waterAt(position.x, position.z, axis, position.y);
+    // A bridge deck can sit above the water, so land on whichever surface is
+    // actually higher instead of dropping through the bridge into the river.
+    const surfaceY = waterY !== null ? Math.max(groundY, waterY) : groundY;
+    const overWater = waterY !== null && waterY >= groundY;
+    const altitude = Math.max(0, Math.round(position.y - surfaceY));
+
+    if (position.y <= surfaceY + 0.1) {
+      if (fall.deployed) this.landFromFall(surfaceY);
+      else {
+        this.die(
+          overWater
+            ? 'HIT THE RIVER WITHOUT A PARACHUTE'
+            : 'FELL FROM THE SKY WITHOUT A PARACHUTE'
+        );
+      }
+      return;
+    }
+
+    if (fall.deployed) {
+      this.setHint(
+        `\ud83e\udd82 CANOPY \u00b7 ${altitude} M \u00b7 STICK TO STEER \u00b7 ${this.chutes} SPARE`
+      );
+    } else {
+      this.setHint(
+        `FREEFALL \u00b7 ${altitude} M \u00b7 ${this.chutes > 0 ? 'B = PARACHUTE' : 'NO CHUTE'}`
+      );
+    }
+  }
+
+  private deployParachute(): void {
+    const fall = this.fall;
+    if (!fall || fall.deployed) return;
+    if (this.chutes <= 0) {
+      this.setHint('No parachute left \u2014 you are going in hard');
+      this.showToast('NO PARACHUTE');
+      return;
+    }
+    this.chutes -= 1;
+    fall.deployed = true;
+    fall.chuteT = 0;
+    fall.verticalSpeed = Math.max(-7, fall.verticalSpeed * 0.2);
+    const chute = this.ensureParachuteMesh();
+    chute.visible = true;
+    chute.scale.setScalar(0.5);
+    this.audio.ui();
+    this.showToast('PARACHUTE OPEN');
+    this.setHint('Chute open \u2014 steer with the stick, the landing is soft.');
+  }
+
+  private ensureParachuteMesh(): THREE.Group {
+    if (this.parachuteMesh) return this.parachuteMesh;
+    const group = new THREE.Group();
+    const canopyMat = new THREE.MeshStandardMaterial({
+      color: 0xe0452c,
+      roughness: 0.78,
+      side: THREE.DoubleSide
+    });
+    const whiteMat = new THREE.MeshStandardMaterial({
+      color: 0xf2f0e6,
+      roughness: 0.8,
+      side: THREE.DoubleSide
+    });
+    const canopy = new THREE.Mesh(
+      new THREE.SphereGeometry(2.35, 20, 9, 0, Math.PI * 2, 0, Math.PI / 2),
+      canopyMat
+    );
+    canopy.scale.set(1, 0.52, 1);
+    canopy.position.y = 4.9;
+    group.add(canopy);
+    // White gores so the canopy reads as fabric instead of an orange bowl.
+    for (let i = 0; i < 4; i += 1) {
+      const gore = new THREE.Mesh(
+        new THREE.SphereGeometry(
+          2.36,
+          5,
+          9,
+          (i / 4) * Math.PI * 2,
+          Math.PI * 0.13,
+          0,
+          Math.PI / 2
+        ),
+        whiteMat
+      );
+      gore.scale.set(1, 0.52, 1);
+      gore.position.y = 4.9;
+      group.add(gore);
+    }
+    // Suspension lines from the canopy rim to the shoulders.
+    const points: number[] = [];
+    for (let i = 0; i < 10; i += 1) {
+      const angle = (i / 10) * Math.PI * 2;
+      points.push(Math.cos(angle) * 2.25, 4.9, Math.sin(angle) * 2.25, 0, 1.35, 0);
+    }
+    const lineGeo = new THREE.BufferGeometry();
+    lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+    group.add(new THREE.LineSegments(lineGeo, new THREE.LineBasicMaterial({ color: 0x2a2c2e })));
+    group.visible = false;
+    this.player.group.add(group);
+    this.parachuteMesh = group;
+    return group;
+  }
+
+  private landFromFall(surfaceY: number): void {
+    const position = this.player.group.position;
+    position.y = surfaceY;
+    this.player.group.rotation.z = 0;
+    this.player.setRiding(false);
+    this.player.resetActions();
+    this.player.velocity.set(0, 0, 0);
+    this.fall = null;
+    this.mode = 'foot';
+    if (this.parachuteMesh) this.parachuteMesh.visible = false;
+    this.camDist = 5.4;
+    this.camPitch = 0.2;
+    this.entryCooldown = 0.6;
+    this.input.reset();
+    this.resetActionTracking();
+    this.showToast('SAFE LANDING \u00b7 PARACHUTE STOWED');
+    this.setHint('Touchdown. Walk to a vehicle or go and find another plane.');
+  }
+
+  private updatePilotlessAircraft(dt: number): void {
+    for (let i = this.pilotlessAircraft.length - 1; i >= 0; i -= 1) {
+      const ghost = this.pilotlessAircraft[i];
+      const vehicle = ghost.vehicle;
+      const position = vehicle.group.position;
+      ghost.speed = Math.max(9, ghost.speed - 1.4 * dt);
+      const fwd = this.moveFwd.set(Math.sin(ghost.yaw), 0, Math.cos(ghost.yaw));
+      position.addScaledVector(fwd, ghost.speed * dt);
+
+      // Wings level, nose settles, then a lazy descent back to the ground.
+      ghost.pitch += (0 - ghost.pitch) * Math.min(1, dt * 0.8);
+      ghost.roll += (0 - ghost.roll) * Math.min(1, dt * 0.9);
+      ghost.verticalSpeed += (-1.6 - ghost.verticalSpeed) * Math.min(1, dt * 0.25);
+      ghost.altitude = Math.max(0, ghost.altitude + ghost.verticalSpeed * dt);
+
+      // Keep the rotors/propellers turning so the empty aircraft still reads
+      // as a live machine instead of a floating prop.
+      if (vehicle.rotors) {
+        for (const rotor of vehicle.rotors) rotor.rotation.y += 24 * dt;
+      }
+      if (vehicle.propellers) {
+        for (const propeller of vehicle.propellers) propeller.rotation.z += 32 * dt;
+      }
+
+      const groundY = this.city.groundHeightAt(position.x, position.z);
+      position.y = groundY + ghost.altitude;
+      vehicle.altitude = ghost.altitude;
+      vehicle.verticalSpeed = ghost.verticalSpeed;
+      vehicle.pitch = ghost.pitch;
+      vehicle.roll = ghost.roll;
+      const euler = this.eulerScratch.set(ghost.pitch, ghost.yaw, ghost.roll, 'YXZ');
+      vehicle.group.quaternion.setFromEuler(euler);
+
+      const outside =
+        position.x < this.city.worldMinX - 120 ||
+        position.x > this.city.worldMaxX + 120 ||
+        position.z < this.city.worldMinZ - 120 ||
+        position.z > this.city.worldMaxZ + 120;
+      if ((ghost.altitude <= 0.05 && ghost.verticalSpeed <= 0) || outside) {
+        if (ghost.altitude <= 0.05) position.y = groundY;
+        this.pilotlessAircraft.splice(i, 1);
+      }
+    }
+  }
+
+  private updateChutePickups(dt: number): void {
+    const position = this.player.group.position;
+    for (const pickup of this.chutePickups) {
+      if (pickup.taken) {
+        pickup.respawn -= dt;
+        if (pickup.respawn <= 0) {
+          pickup.taken = false;
+          pickup.group.visible = true;
+        }
+        continue;
+      }
+      pickup.group.position.y =
+        this.city.groundHeightAt(pickup.x, pickup.z) + Math.sin(this.elapsed * 1.6 + pickup.x) * 0.04;
+      if (this.mode !== 'foot' || this.dead || this.inside) continue;
+      if (Math.hypot(position.x - pickup.x, position.z - pickup.z) > 2.7) continue;
+      pickup.taken = true;
+      pickup.group.visible = false;
+      pickup.respawn = 30;
+      this.chutes = Math.min(5, this.chutes + 1);
+      this.audio.ui();
+      this.showToast(`PARACHUTE PACKED \u00b7 ${this.chutes} IN THE BAG`);
+      this.setHint('Press B in the air to open the parachute.');
+    }
+  }
+
+  private createChutePickup(x: number, z: number): ChutePickup {
+    const group = new THREE.Group();
+    const y = this.city.groundHeightAt(x, z);
+    const frameMat = new THREE.MeshStandardMaterial({
+      color: 0x3a3f45,
+      roughness: 0.82,
+      metalness: 0.25
+    });
+    const packMat = new THREE.MeshStandardMaterial({ color: 0xd9452a, roughness: 0.7 });
+    const strapMat = new THREE.MeshStandardMaterial({ color: 0xf0f2f4, roughness: 0.75 });
+
+    for (const side of [-1, 1]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.09, 1.25, 0.09), frameMat);
+      post.position.set(side * 0.66, 0.62, 0);
+      group.add(post);
+    }
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.09, 0.09), frameMat);
+    rail.position.set(0, 1.24, 0);
+    group.add(rail);
+    for (const offset of [-0.37, 0.37]) {
+      const pack = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.34), packMat);
+      pack.position.set(offset, 0.98, 0);
+      pack.rotation.y = offset > 0 ? 0.16 : -0.16;
+      group.add(pack);
+      const strap = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.1, 0.36), strapMat);
+      strap.position.set(offset, 1.1, 0);
+      strap.rotation.y = pack.rotation.y;
+      group.add(strap);
+    }
+    // Soft beacon so the rack is easy to spot across the apron.
+    const beacon = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.7, 0.7, 3.2, 12, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: 0xff8a4a,
+        transparent: true,
+        opacity: 0.16,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      })
+    );
+    beacon.position.y = 1.6;
+    group.add(beacon);
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.9, 1.15, 22),
+      new THREE.MeshBasicMaterial({
+        color: 0xff9a5a,
+        transparent: true,
+        opacity: 0.4,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.04;
+    group.add(ring);
+
+    group.position.set(x, y, z);
+    this.scene.add(group);
+    return { group, x, z, taken: false, respawn: 0 };
   }
 
   private updateSequence(dt: number): void {
@@ -2100,6 +2540,9 @@ export class Game {
     const leftFlightHud = this.activeVehicle?.kind === 'plane' || this.activeVehicle?.kind === 'helicopter';
     this.mode = 'foot';
     this.activeVehicle = null;
+    this.fall = null;
+    if (this.parachuteMesh) this.parachuteMesh.visible = false;
+    this.player.setRiding(false);
     this.player.group.visible = true;
     this.carSpeed = 0;
     this.input.reset();
@@ -3310,13 +3753,22 @@ export class Game {
     }
   }
 
-  private die(): void {
+  private die(reason = ''): void {
     if (this.dead) return;
     this.dead = true;
+    this.deathReason = reason;
     this.respawnTimer = RESPAWN_DELAY;
     this.damageFlash = 1;
     this.carSpeed = 0;
-    if (this.mode === 'entering' || this.mode === 'exiting' || this.mode === 'drive') {
+    this.fall = null;
+    if (this.parachuteMesh) this.parachuteMesh.visible = false;
+    this.player.setRiding(false);
+    if (
+      this.mode === 'entering' ||
+      this.mode === 'exiting' ||
+      this.mode === 'drive' ||
+      this.mode === 'falling'
+    ) {
       if (this.activeVehicle) {
         if (this.activeVehicle.driver) this.activeVehicle.driver.visible = false;
         this.activeVehicle.doorOpen = false;
@@ -3351,14 +3803,16 @@ export class Game {
     this.disableAllButtons();
     this.ui.death?.classList.add('open');
     if (this.ui.deathText) {
-      this.ui.deathText.textContent = `Medical bill \u20a6${DEATH_FEE} \u00b7 Respawning in ${RESPAWN_DELAY.toFixed(1)}s`;
+      const cause = this.deathReason ? `${this.deathReason} \u00b7 ` : '';
+      this.ui.deathText.textContent = `${cause}Medical bill \u20a6${DEATH_FEE} \u00b7 Respawning in ${RESPAWN_DELAY.toFixed(1)}s`;
     }
   }
 
   private updateDeath(dt: number): void {
     this.respawnTimer -= dt;
     if (this.ui.deathText) {
-      this.ui.deathText.textContent = `Medical bill \u20a6${DEATH_FEE} \u00b7 Respawning in ${Math.max(0, this.respawnTimer).toFixed(1)}s`;
+      const cause = this.deathReason ? `${this.deathReason} \u00b7 ` : '';
+      this.ui.deathText.textContent = `${cause}Medical bill \u20a6${DEATH_FEE} \u00b7 Respawning in ${Math.max(0, this.respawnTimer).toFixed(1)}s`;
     }
     if (this.respawnTimer <= 0) this.respawn();
   }
@@ -3366,6 +3820,10 @@ export class Game {
   private respawn(): void {
     if (!this.dead) return;
     this.dead = false;
+    this.deathReason = '';
+    this.fall = null;
+    if (this.parachuteMesh) this.parachuteMesh.visible = false;
+    this.player.setRiding(false);
     this.respawnTimer = 0;
     this.ui.death?.classList.remove('open');
     this.money = Math.max(0, this.money - DEATH_FEE);
@@ -4280,6 +4738,7 @@ export class Game {
   }
 
   private updateCamera(dt: number): void {
+    const falling = this.mode === 'falling';
     const driving = this.mode === 'drive' || this.mode === 'entering' || this.mode === 'exiting';
     const vehicle = this.activeVehicle;
     const base = driving && vehicle ? vehicle.group.position : this.player.group.position;
@@ -4307,7 +4766,9 @@ export class Game {
         )
       : inside
         ? clamp(this.camDist, 2.2, 3.0)
-        : this.camDist;
+        : falling
+          ? Math.max(this.camDist, 7.5)
+          : this.camDist;
     const pitch = clamp(this.camPitch + bridgeBlend * 0.3, -0.12, 0.82);
     const offX = Math.sin(this.camYaw) * Math.cos(pitch) * dist;
     const offY = Math.sin(pitch) * dist + (driving ? 0.25 : inside ? 0.35 : 0.65);
@@ -4413,6 +4874,22 @@ export class Game {
       return;
     }
 
+    if (this.mode === 'falling') {
+      const fall = this.fall;
+      this.disableAllButtons();
+      input.setButtonLabel('btn-gas', 'STEER');
+      input.setButtonLabel('btn-c', 'STEER');
+      input.setButtonLabel('btn-d', 'STEER');
+      if (!fall?.deployed) {
+        input.setButtonLabel('btn-b', this.chutes > 0 ? 'PARACHUTE' : 'NO CHUTE');
+        input.setButtonEnabled('btn-b', true);
+      } else {
+        input.setButtonLabel('btn-b', 'CANOPY');
+        input.setButtonEnabled('btn-b', false);
+      }
+      return;
+    }
+
     if (this.mode === 'drive') {
       const aircraft = this.activeVehicle;
       // Fixed-wing and rotary aircraft get their own button layout. Without
@@ -4420,8 +4897,9 @@ export class Game {
       // unused JUMP key, so the climb button could not be pressed at all.
       if (aircraft && (aircraft.kind === 'plane' || aircraft.kind === 'helicopter')) {
         const isChopper = aircraft.kind === 'helicopter';
+        const airborne = (aircraft.altitude ?? 0) > 3.5;
         input.setButtonLabel('btn-a', 'NO GUN');
-        input.setButtonLabel('btn-b', 'EXIT');
+        input.setButtonLabel('btn-b', airborne ? 'JUMP' : 'EXIT');
         input.setButtonLabel('btn-c', 'CLIMB');
         input.setButtonLabel('btn-d', 'DIVE');
         input.setButtonLabel('btn-e', this.player.armed ? 'PUT AWAY' : 'DRAW GUN');

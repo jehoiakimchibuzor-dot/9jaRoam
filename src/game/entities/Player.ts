@@ -374,6 +374,42 @@ export class Player {
     rig.head.rotation.set(-0.16, 0, 0);
   }
 
+  /**
+   * Skydiving pose while the player is in freefall: arms and legs splayed,
+   * with a little windbuffet sway so it does not look frozen.
+   */
+  freefallPose(time: number): void {
+    const rig = this.rig;
+    const sway = Math.sin(time * 2.2) * 0.09;
+    rig.torso.position.y = 0.9;
+    rig.torso.rotation.set(0.18, 0, 0.1 + sway * 0.3);
+    rig.leftLeg.rotation.set(0.34, 0, -0.52);
+    rig.rightLeg.rotation.set(0.34, 0, 0.52);
+    rig.leftKnee.rotation.x = 0.92;
+    rig.rightKnee.rotation.x = 0.92;
+    rig.leftArm.rotation.set(-2.2 + sway, 0, -1.28);
+    rig.rightArm.rotation.set(-2.2 - sway, 0, 1.28);
+    rig.leftElbow.rotation.x = -0.28;
+    rig.rightElbow.rotation.x = -0.28;
+    rig.head.rotation.set(0.22, 0, 0);
+  }
+
+  /** Hanging from the canopy with both hands on the risers. */
+  canopyPose(steer: number): void {
+    const rig = this.rig;
+    rig.torso.position.y = 0.9;
+    rig.torso.rotation.set(-0.06, steer * 0.08, steer * 0.05);
+    rig.leftLeg.rotation.set(-0.12, 0, -0.18);
+    rig.rightLeg.rotation.set(-0.12, 0, 0.18);
+    rig.leftKnee.rotation.x = 0.24;
+    rig.rightKnee.rotation.x = 0.24;
+    rig.leftArm.rotation.set(-0.35, 0, -2.55);
+    rig.rightArm.rotation.set(-0.35, 0, 2.55);
+    rig.leftElbow.rotation.x = -0.18;
+    rig.rightElbow.rotation.x = -0.18;
+    rig.head.rotation.set(0.05, 0, 0);
+  }
+
   punch(): void {
     if (this.punchTimer > 0.18 || !this.onGround || this.armed) return;
     this.setCrouched(false);

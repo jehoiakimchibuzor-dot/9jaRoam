@@ -1172,6 +1172,59 @@ function sweptWing(
   return mesh;
 }
 
+/**
+ * A vertical fin, shaped like a real airliner tail: the leading edge sweeps
+ * back from the root, the chord narrows toward the top, and the tip is rounded
+ * instead of chopped square. The outline is drawn in the chord/height plane and
+ * extruded through the fuselage centre line, so the fin is a genuine tapered
+ * solid rather than a tilted slab.
+ */
+function sweptFin(
+  parent: THREE.Object3D,
+  height: number,
+  rootChord: number,
+  tipChord: number,
+  sweep: number,
+  thickness: number,
+  color: number,
+  y: number,
+  z: number,
+  dorsalLength = 0,
+  rootDrop = 0
+): THREE.Mesh {
+  const tipRadius = Math.max(0.05, tipChord / 2);
+  const tipCentreZ = -sweep;
+  const dorsalRise = dorsalLength * 0.3;
+  const shape = new THREE.Shape();
+  // The dorsal fillet starts well ahead of the fin and ramps up into the
+  // leading edge, so the tail grows out of the fuselage instead of standing on
+  // it like a fence post.
+  shape.moveTo(rootChord / 2 + dorsalLength, 0);
+  shape.lineTo(rootChord / 2, dorsalRise);
+  // Sweep up to the start of the rounded tip.
+  shape.lineTo(tipCentreZ + tipRadius, height - tipRadius);
+  // Round the top of the fin; absarc goes over the crown from front to back.
+  shape.absarc(tipCentreZ, height - tipRadius, tipRadius, 0, Math.PI, false);
+  // Back down the trailing edge; the root edge can slope down so the fin sits
+  // inside the tapering tail cone all the way to the rear.
+  shape.lineTo(-rootChord / 2, -rootDrop);
+  shape.closePath();
+
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: thickness,
+    bevelEnabled: false,
+    curveSegments: 6
+  });
+  // Centre the extrusion on the fuselage centre line, then stand the shape up:
+  // its chord axis becomes +z (nose) and its thickness axis becomes x.
+  geo.translate(0, 0, -thickness / 2);
+  geo.rotateY(-Math.PI / 2);
+  const mesh = new THREE.Mesh(geo, mat(color, 0.45));
+  mesh.position.set(0, y, z);
+  parent.add(mesh);
+  return mesh;
+}
+
 export function createShamalJet(color = 0x1d5fa8): VehicleRig {
   const group = new THREE.Group();
   const white = 0xf0f2f4;
@@ -1263,26 +1316,22 @@ export function createShamalJet(color = 0x1d5fa8): VehicleRig {
   }
 
   // --------------------------------------------------------------------- tail
-  // White swept fin carrying the blue globe emblem from the reference.
-  // Taller fin with stronger sweep-back, matching the low-poly airliner look.
-  const fin = rbox(group, 0.22, 4.2, 3.0, 0.1, white, 0, 4.05, -6.6);
-  fin.rotation.x = -0.25;
-  // Blue cheatline band across the fin.
-  rbox(group, 0.24, 0.55, 2.6, 0.06, blue, 0, 5.55, -7.0);
-  // Dorsal fairing where the fin meets the fuselage crown.
-  rbox(group, 0.18, 1.4, 2.2, 0.08, white, 0, 2.75, -5.2);
-  // Horizontal stabilizers at the base of the fin, swept back.
-  sweptWing(group, 1, 6.0, 2.0, 1.0, 0.8, 0.14, white, 2.1, -7.9);
-  sweptWing(group, -1, 6.0, 2.0, 1.0, 0.8, 0.14, white, 2.1, -7.9);
+  // Real airliner tail: a swept, tapered fin with a rounded tip and a dorsal
+  // fillet that grows out of the fuselage crown, plus small swept tailplanes
+  // low on the rear cone. The old version was a tilted box slab.
+  sweptFin(group, 4.2, 3.0, 1.2, 1.75, 0.24, white, 2.55, -7.7, 2.4, 0.25);
+  // Horizontal stabilisers, mounted low on the tail cone and swept back.
+  sweptWing(group, 1, 5.0, 2.4, 1.0, 0.85, 0.15, white, 2.3, -8.4);
+  sweptWing(group, -1, 5.0, 2.4, 1.0, 0.85, 0.15, white, 2.3, -8.4);
 
   // Globe emblem on both sides of the fin.
   for (const side of [-1, 1]) {
-    const globe = new THREE.Mesh(new THREE.CircleGeometry(0.66, 20), mat(blue, 0.5));
+    const globe = new THREE.Mesh(new THREE.CircleGeometry(0.6, 20), mat(blue, 0.5));
     globe.rotation.y = side * Math.PI / 2;
-    globe.position.set(side * 0.13, 4.0, -6.55);
+    globe.position.set(side * 0.13, 3.95, -8.05);
     group.add(globe);
-    const meridian = box(group, 0.04, 0.11, 1.2, white, side * 0.15, 4.0, -6.55);
-    const equator = box(group, 0.04, 1.2, 0.1, white, side * 0.15, 4.0, -6.55);
+    const meridian = box(group, 0.04, 0.1, 1.1, white, side * 0.15, 3.95, -8.05);
+    const equator = box(group, 0.04, 1.1, 0.09, white, side * 0.15, 3.95, -8.05);
     meridian.renderOrder = 1;
     equator.renderOrder = 1;
   }
