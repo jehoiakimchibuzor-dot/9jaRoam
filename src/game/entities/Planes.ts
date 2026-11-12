@@ -379,6 +379,9 @@ export class Planes {
 
     specs.forEach((spec, index) => {
       const { group, beacon } = buildAirliner(spec.color);
+      // The passenger airliners are real wide-bodies, not business jets:
+      // scale the model up so they read much larger than the player's jet.
+      group.scale.setScalar(1.9);
       group.position.y = spec.height;
       scene.add(group);
       this.list.push({

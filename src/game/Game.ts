@@ -1174,6 +1174,8 @@ export class Game {
     const e = this.input.consumeE();
     const f = this.input.consumeF();
     const r = this.input.consumeR();
+    const x = this.input.consumeEject();
+    const p = this.input.consumeChute();
 
     if (this.mode === 'entering' || this.mode === 'exiting') {
       this.currentInteraction = null;
@@ -1186,11 +1188,23 @@ export class Game {
     } else if (this.mode === 'falling') {
       this.currentInteraction = null;
       this.currentInteriorPoint = null;
-      this.updateFalling(dt, b, e);
+      this.updateFalling(dt, b || p, e);
     } else {
       this.currentInteraction = null;
       this.currentInteriorPoint = null;
       this.updateDrive(dt, a, b, e, f, r);
+
+      // Handle aircraft flight-mode actions (eject / chute) from the updated
+      // button state consumed above.
+      const aircraft = this.activeVehicle;
+      if (
+        (this.mode === 'drive' || this.mode === 'entering' || this.mode === 'exiting') &&
+        aircraft &&
+        (aircraft.kind === 'plane' || aircraft.kind === 'helicopter') &&
+        x
+      ) {
+        this.beginBailOut();
+      }
     }
 
     if (!this.inside && !this.siteSeq) this.updateGarageEntrance();
@@ -1703,11 +1717,11 @@ export class Game {
       const grounded = (aircraft.altitude ?? 0) <= 0.05;
 
       // ---------------------------------------------------------------- throttle
-      // GAS is the only throttle control. Release it and the aircraft settles to
-      // a slow cruise instead of falling out of the sky; REVERSE is an airbrake
-      // (and a wheel brake on the ground).
+      // GAS accelerates the aircraft. On the ground, it takes ~2.5 seconds of
+      // rolling acceleration to reach takeoff speed before lifting off.
       if (gas) {
-        this.carSpeed = Math.min(maxAirSpeed, this.carSpeed + 13 * dt);
+        const accel = grounded ? 10.5 : 13;
+        this.carSpeed = Math.min(maxAirSpeed, this.carSpeed + accel * dt);
       } else if (reverse) {
         this.carSpeed = Math.max(0, this.carSpeed - 16 * dt);
       } else if (grounded) {
@@ -1720,14 +1734,20 @@ export class Game {
       const airspeed = Math.max(0, this.carSpeed);
       const speedRatio = Math.min(1.25, airspeed / maxAirSpeed);
 
+      // Takeoff requirement: Must build up speed on the runway (~2.5 sec of GAS)
+      // reaching at least 55% of max air speed before aerodynamic lift begins.
+      const takeoffSpeed = maxAirSpeed * 0.55;
+      const canTakeoff = airspeed >= takeoffSpeed || !grounded;
+
       // ------------------------------------------------------------------- pitch
-      // Stick up = climb, stick down = dive. Release and the nose levels itself.
-      // The optional C/D buttons still work for anyone who prefers them.
+      // THRUST only accelerates. Altitude changes only when the pilot asks for
+      // it: CLIMB/DIVE buttons or stick up/down. Release and the nose levels.
+      // There is deliberately no hidden "gas also climbs" assist.
       let pitchCmd = -stickY;
       if (state.cHeld || state.cPressed) pitchCmd = 1;
       if (state.dHeld) pitchCmd = -1;
       const pitchAuthority = 1.5 * (0.35 + 0.65 * Math.min(1, speedRatio));
-      if (Math.abs(pitchCmd) > 0.1) {
+      if (Math.abs(pitchCmd) > 0.1 && canTakeoff) {
         aircraft.pitch -= pitchCmd * pitchAuthority * dt;
       } else {
         aircraft.pitch += (0 - aircraft.pitch) * Math.min(1, dt * 2.6);
@@ -1757,7 +1777,13 @@ export class Game {
       // up and the aircraft sinks, which is what makes the throttle matter.
       const climbFromPitch = -Math.sin(aircraft.pitch) * airspeed * 0.85;
       const stallSink = -Math.max(0, 0.42 - speedRatio) * 25;
-      const targetVs = clamp(climbFromPitch + stallSink, -34, 24);
+      let targetVs = clamp(climbFromPitch + stallSink, -34, 24);
+
+      // On the ground below takeoff speed, stay grounded rolling along runway
+      if (grounded && !canTakeoff) {
+        targetVs = 0;
+      }
+
       aircraft.verticalSpeed += (targetVs - aircraft.verticalSpeed) * Math.min(1, dt * 3.2);
 
       // Climbing costs speed, diving buys it back.
@@ -4835,20 +4861,22 @@ export class Game {
     const base = driving && vehicle ? vehicle.group.position : this.player.group.position;
     const baseY = base.y;
     const height = driving ? vehicle?.access?.cameraHeight ?? 1.75 : this.player.crouched ? 1.05 : 1.5;
-    const bridgeBlend = driving && !this.inside
-      ? clamp((baseY - 0.6) / 5.8, 0, 1)
-      : 0;
     this.camTarget.set(base.x, baseY + height, base.z);
 
     const inside = this.inside;
     const isBike = driving && vehicle ? vehicle.length < 2.5 : false;
     const isPlane = driving && vehicle?.kind === 'plane';
-    // Aircraft get a much longer chase boom: at the car distance the camera sat
-    // inside the fuselage (and the bigger the plane, the worse it was). The boom
-    // also creeps out as you climb so there is a real sense of height.
-    const flightBoom = isPlane
-      ? 6 + clamp((vehicle?.altitude ?? 0) * 0.18, 0, 8)
-      : 0;
+    const isHelicopter = driving && vehicle?.kind === 'helicopter';
+    // Bridge blending is for road vehicles only. Triggering it from altitude
+    // made the chase camera zoom out every time an aircraft climbed above 6 m.
+    const bridgeBlend =
+      driving && !this.inside && !isPlane && !isHelicopter
+        ? clamp((baseY - 0.6) / 5.8, 0, 1)
+        : 0;
+    // A fixed flight boom keeps the chase camera steady. The old altitude-based
+    // boom added up to 8 m of distance as the aircraft climbed, which read as
+    // the camera zooming in and out.
+    const flightBoom = isPlane ? 7.5 : isHelicopter ? 5 : 0;
     const dist = driving
       ? clamp(
           this.camDist + bridgeBlend * 4.5 + (isBike ? 3.2 : 5) + flightBoom,
@@ -4950,7 +4978,7 @@ export class Game {
   }
 
   private disableAllButtons(): void {
-    for (const id of ['btn-a', 'btn-b', 'btn-c', 'btn-d', 'btn-e', 'btn-f', 'btn-r', 'btn-gas', 'btn-rev']) {
+    for (const id of ['btn-a', 'btn-b', 'btn-c', 'btn-d', 'btn-e', 'btn-f', 'btn-r', 'btn-gas', 'btn-rev', 'btn-p', 'btn-x']) {
       this.input.setButtonEnabled(id, false);
       this.input.setButtonActive(id, false);
     }
@@ -4968,15 +4996,22 @@ export class Game {
     if (this.mode === 'falling') {
       const fall = this.fall;
       this.disableAllButtons();
+      input.setControlMode('fall');
       input.setButtonLabel('btn-gas', 'STEER');
       input.setButtonLabel('btn-c', 'STEER');
       input.setButtonLabel('btn-d', 'STEER');
+      input.setButtonLabel('btn-p', 'CHUTE');
+      input.setButtonEnabled('btn-p', true);
       if (!fall?.deployed) {
         input.setButtonLabel('btn-b', this.chutes > 0 ? 'PARACHUTE' : 'NO CHUTE');
+        input.setButtonLabel('btn-x', 'EJECT');
         input.setButtonEnabled('btn-b', true);
+        input.setButtonEnabled('btn-x', true);
       } else {
         input.setButtonLabel('btn-b', 'CANOPY');
         input.setButtonEnabled('btn-b', false);
+        input.setButtonLabel('btn-x', 'EJECT');
+        input.setButtonEnabled('btn-x', true);
       }
       return;
     }
@@ -4989,6 +5024,7 @@ export class Game {
       if (aircraft && (aircraft.kind === 'plane' || aircraft.kind === 'helicopter')) {
         const isChopper = aircraft.kind === 'helicopter';
         const airborne = (aircraft.altitude ?? 0) > 3.5;
+        input.setControlMode('flight');
         input.setButtonLabel('btn-a', 'NO GUN');
         input.setButtonLabel('btn-b', airborne ? 'JUMP' : 'EXIT');
         input.setButtonLabel('btn-c', 'CLIMB');
@@ -4996,6 +5032,8 @@ export class Game {
         input.setButtonLabel('btn-e', this.player.armed ? 'PUT AWAY' : 'DRAW GUN');
         input.setButtonLabel('btn-f', 'NEXT GUN');
         input.setButtonLabel('btn-r', 'RELOAD');
+        input.setButtonLabel('btn-p', 'CHUTE');
+        input.setButtonLabel('btn-x', 'EJECT');
         input.setButtonEnabled('btn-a', false);
         input.setButtonEnabled('btn-b', true);
         input.setButtonEnabled('btn-c', true);
@@ -5003,6 +5041,8 @@ export class Game {
         input.setButtonEnabled('btn-e', true);
         input.setButtonEnabled('btn-f', true);
         input.setButtonEnabled('btn-r', false);
+        input.setButtonEnabled('btn-p', true);
+        input.setButtonEnabled('btn-x', true);
         input.setButtonLabel('btn-gas', isChopper ? 'ROTOR' : 'THRUST');
         input.setButtonLabel('btn-rev', 'AIRBRAKE');
         input.setButtonEnabled('btn-gas', true);
@@ -5011,10 +5051,12 @@ export class Game {
         input.setButtonActive('btn-d', input.state.dHeld);
         input.setButtonActive('btn-gas', input.state.gasHeld);
         input.setButtonActive('btn-rev', input.state.reverseHeld);
+
         return;
       }
 
       const canShoot = this.player.armed && !this.weapons.isMelee;
+      input.setControlMode('drive');
       input.setButtonLabel('btn-a', canShoot ? 'DRIVE-BY' : 'NO GUN');
       input.setButtonLabel(
         'btn-b',
@@ -5049,6 +5091,7 @@ export class Game {
     }
 
     if (this.inside) {
+      input.setControlMode('foot');
       const label = this.currentInteriorPoint
         ? this.currentInteriorPoint.kind === 'exit'
           ? 'LEAVE'
@@ -5079,6 +5122,7 @@ export class Game {
     }
 
     const interaction = this.currentInteraction;
+    input.setControlMode('foot');
     const contextLabel = interaction
       ? interaction.kind === 'giver'
         ? 'TALK'
@@ -5106,6 +5150,15 @@ export class Game {
     input.setButtonActive('btn-gas', false);
     input.setButtonEnabled('btn-rev', false);
     input.setButtonActive('btn-rev', false);
+    if (this.chutes > 0) {
+      input.setButtonLabel('btn-p', 'CHUTE');
+      input.setButtonEnabled('btn-p', true);
+      input.setButtonLabel('btn-x', 'EJECT');
+      input.setButtonEnabled('btn-x', false);
+    } else {
+      input.setButtonEnabled('btn-p', false);
+      input.setButtonEnabled('btn-x', false);
+    }
   }
 
   private updateClock(): void {

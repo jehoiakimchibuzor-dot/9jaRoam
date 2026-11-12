@@ -14,6 +14,8 @@ export interface InputState {
   sprintHeld: boolean;
   rPressed: boolean;
   fPressed: boolean;
+  ejectPressed: boolean;
+  chutePressed: boolean;
 }
 
 function clamp(v: number, min: number, max: number): number {
@@ -40,7 +42,9 @@ export class Input {
     reverseHeld: false,
     sprintHeld: false,
     rPressed: false,
-    fPressed: false
+    fPressed: false,
+    ejectPressed: false,
+    chutePressed: false
   };
 
   private keys = new Set<string>();
@@ -49,6 +53,7 @@ export class Input {
   private lookDY = 0;
   private zoomDelta = 0;
   private leftKnob: HTMLElement | null = null;
+  private pad: HTMLElement | null = null;
   private pointers = new Map<number, { x: number; y: number }>();
   private lookPointer = -1;
   private stickActive = false;
@@ -128,6 +133,11 @@ export class Input {
   }
 
   private buildButtons(): void {
+    const pad = document.createElement('div');
+    pad.id = 'action-pad';
+    pad.dataset.mode = 'foot';
+    this.root.append(pad);
+    this.pad = pad;
     this.makeButton('btn-a', 'A', 'FIRE', (down) => {
       this.state.aHeld = down;
       if (down) this.state.aPressed = true;
@@ -158,6 +168,14 @@ export class Input {
     this.makeButton('btn-r', 'R', 'RELOAD', (down) => {
       if (down) this.state.rPressed = true;
     });
+    this.makeButton('btn-p', 'P', 'CHUTE', (down) => {
+      this.state.chutePressed = down;
+      if (down) this.state.chutePressed = true;
+    });
+    this.makeButton('btn-x', 'X', 'EJECT', (down) => {
+      this.state.ejectPressed = down;
+      if (down) this.state.ejectPressed = true;
+    });
   }
 
   private makeButton(
@@ -170,7 +188,7 @@ export class Input {
     btn.id = id;
     btn.className = 'abtn';
     btn.innerHTML = `<span class="abtn-letter">${letter}</span><span class="abtn-sub">${sub}</span>`;
-    this.root.append(btn);
+    (this.pad ?? this.root).append(btn);
     const down = (e: PointerEvent): void => {
       if (this.disabledButtons.has(id)) {
         e.preventDefault();
@@ -215,6 +233,11 @@ export class Input {
     const el = document.getElementById(id);
     if (!el) return;
     el.classList.toggle('is-active', active);
+  }
+
+  /** Switch the action pad to a mode-specific grid. */
+  setControlMode(mode: 'foot' | 'drive' | 'flight' | 'fall'): void {
+    if (this.pad && this.pad.dataset.mode !== mode) this.pad.dataset.mode = mode;
   }
 
   private bindKeyboard(): void {
@@ -370,6 +393,18 @@ export class Input {
     return pressed;
   }
 
+  consumeEject(): boolean {
+    const pressed = this.state.ejectPressed;
+    this.state.ejectPressed = false;
+    return pressed;
+  }
+
+  consumeChute(): boolean {
+    const pressed = this.state.chutePressed;
+    this.state.chutePressed = false;
+    return pressed;
+  }
+
   reset(): void {
     this.keys.clear();
     this.pointers.clear();
@@ -387,6 +422,8 @@ export class Input {
     this.state.sprintHeld = false;
     this.state.rPressed = false;
     this.state.fPressed = false;
+    this.state.ejectPressed = false;
+    this.state.chutePressed = false;
     this.lookDX = 0;
     this.lookDY = 0;
     this.zoomDelta = 0;

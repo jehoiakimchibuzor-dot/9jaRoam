@@ -134,6 +134,122 @@
           <p>9ja Roam is a landscape game.</p>
         </div>
       </div>
+
+      <!-- Flow Overlays: Splash, Onboarding & Auth -->
+      <div id="splash-screen" class="flow-overlay">
+        <div class="splash-card">
+          <div class="splash-logo">9JA ROAM</div>
+          <div class="splash-subtitle">KANO STREETS · 3D MOBILE</div>
+          <div class="splash-progress">
+            <div id="splash-progress-fill"></div>
+          </div>
+          <div class="splash-footer">POWERED BY THREE.JS · CAPACITOR</div>
+        </div>
+      </div>
+
+      <div id="onboarding-screen" class="flow-overlay">
+        <div class="onboard-card">
+          <button id="onboard-skip-btn" type="button" class="flow-skip-btn">SKIP</button>
+          <div class="onboard-viewport">
+            <div id="onboard-track" class="onboard-track">
+              <div class="onboard-slide">
+                <div class="slide-icon">🏙️</div>
+                <h2>WELCOME TO KANO</h2>
+                <p>Explore a vibrant, low-poly 3D Nigerian metropolis. Roam the city streets, transit hubs, market stalls, and expressways.</p>
+              </div>
+              <div class="onboard-slide">
+                <div class="slide-icon">🏎️</div>
+                <h2>DRIVE, FLY & COMBAT</h2>
+                <p>Drive sports cars, Danfo buses, and pilot stunt planes or helicopters. Complete missions, fight rival gangs, and dodge police.</p>
+              </div>
+              <div class="onboard-slide">
+                <div class="slide-icon">💰</div>
+                <h2>RISE TO THE TOP</h2>
+                <p>Earn cash from street hustles, repair vehicles at city garages, deposit money at banks, and build your Kano empire!</p>
+              </div>
+            </div>
+          </div>
+          <div class="onboard-footer">
+            <div class="onboard-dots">
+              <span class="onboard-dot is-active"></span>
+              <span class="onboard-dot"></span>
+              <span class="onboard-dot"></span>
+            </div>
+            <button id="onboard-next-btn" type="button" class="flow-btn">NEXT</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="auth-screen" class="flow-overlay">
+        <div class="auth-card">
+          <div class="auth-header">
+            <div class="auth-kicker">9JA ROAM · KANO PROFILE</div>
+            <h2>IDENTITY & PROFILE</h2>
+          </div>
+
+          <div class="avatar-section">
+            <div class="avatar-label">CHOOSE YOUR AVATAR</div>
+            <div class="avatar-grid">
+              <div class="avatar-option is-selected" data-avatar="street-rebel">
+                <div class="avatar-img">👑</div>
+                <span>Rebel</span>
+              </div>
+              <div class="avatar-option" data-avatar="kano-maverick">
+                <div class="avatar-img">⚡</div>
+                <span>Maverick</span>
+              </div>
+              <div class="avatar-option" data-avatar="city-boss">
+                <div class="avatar-img">💼</div>
+                <span>Boss</span>
+              </div>
+              <div class="avatar-option" data-avatar="hustler-pro">
+                <div class="avatar-img">🔥</div>
+                <span>Hustler</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="auth-tabs">
+            <button id="tab-guest" class="auth-tab is-active" type="button">QUICK PLAY</button>
+            <button id="tab-login" class="auth-tab" type="button">LOGIN</button>
+            <button id="tab-register" class="auth-tab" type="button">REGISTER</button>
+          </div>
+
+          <div id="auth-error-msg" class="auth-error"></div>
+
+          <div id="form-guest" class="auth-form is-active">
+            <div class="input-group">
+              <label for="guest-name-input">PLAYER HANDLE</label>
+              <input id="guest-name-input" type="text" placeholder="e.g. Kano Roamer" value="Kano Roamer" />
+            </div>
+            <button id="btn-start-guest" type="button" class="flow-btn flow-btn-full">START GAME (GUEST)</button>
+          </div>
+
+          <div id="form-login" class="auth-form">
+            <div class="input-group">
+              <label for="login-user-input">USERNAME</label>
+              <input id="login-user-input" type="text" placeholder="Enter username" />
+            </div>
+            <div class="input-group">
+              <label for="login-pass-input">PASSWORD</label>
+              <input id="login-pass-input" type="password" placeholder="Enter password" />
+            </div>
+            <button id="btn-submit-login" type="button" class="flow-btn flow-btn-full">LOG IN & PLAY</button>
+          </div>
+
+          <div id="form-register" class="auth-form">
+            <div class="input-group">
+              <label for="reg-user-input">CREATE USERNAME</label>
+              <input id="reg-user-input" type="text" placeholder="Min 3 characters" />
+            </div>
+            <div class="input-group">
+              <label for="reg-pass-input">CREATE PASSWORD</label>
+              <input id="reg-pass-input" type="password" placeholder="Min 4 characters" />
+            </div>
+            <button id="btn-submit-register" type="button" class="flow-btn flow-btn-full">REGISTER & PLAY</button>
+          </div>
+        </div>
+      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
