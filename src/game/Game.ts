@@ -359,6 +359,7 @@ export class Game {
   private fps = 60;
   private lastTime = 0;
   private running = false;
+  private paused = false;
   private hintTimer = 8;
 
   private seqTimer = 0;
@@ -615,6 +616,7 @@ export class Game {
     this.police = new Police(this.scene, this.city, callbacks);
 
     this.input = new Input(document.getElementById('controls') as HTMLElement, canvas);
+    this.input.onPause = (paused) => this.setPaused(paused);
 
     this.hudSpeed = hud.speed;
     this.hudHint = hud.hint;
@@ -881,7 +883,7 @@ export class Game {
     window.addEventListener('keydown', unlock, { once: true });
     window.addEventListener('resize', () => this.onResize());
 
-    this.setHint('Move stick \u00b7 B enter/use \u00b7 A fire \u00b7 E gun \u00b7 F next gun \u00b7 R reload');
+    this.setHint('Left stick to move \u00b7 right buttons to act \u00b7 weapon icon switches guns (hold to reload)');
   }
 
   start(): void {
@@ -889,6 +891,16 @@ export class Game {
     this.running = true;
     this.lastTime = performance.now();
     requestAnimationFrame((t) => this.loop(t));
+  }
+
+  /** Freeze simulation while keeping the last frame on screen. */
+  private setPaused(paused: boolean): void {
+    if (this.paused === paused) return;
+    this.paused = paused;
+    this.input.reset();
+    this.input.setPaused(paused);
+    this.setHint(paused ? 'PAUSED \u00b7 tap the pause button to resume' : '');
+    this.audio.ui();
   }
 
   private makeCombatCallbacks(): CombatCallbacks {
@@ -929,6 +941,10 @@ export class Game {
     const rawDt = Math.max(0, (now - this.lastTime) / 1000);
     const dt = Math.min(0.05, rawDt);
     this.lastTime = now;
+    if (this.paused) {
+      requestAnimationFrame((t) => this.loop(t));
+      return;
+    }
     this.fps += (1 / Math.max(rawDt, 0.001) - this.fps) * 0.06;
     this.gameClockMs += Math.min(rawDt, 0.25) * 1000 * Game.GAME_TIME_SCALE;
     this.expandShadow();
@@ -1311,9 +1327,6 @@ export class Game {
     // Defensive: a canopy must never stay attached once the player is back on
     // foot, even if a teleport/debug path skipped the normal landing handler.
     if (this.parachuteMesh?.visible) this.parachuteMesh.visible = false;
-    this.input.setButtonLabel('btn-gas', 'GAS');
-    this.input.setButtonLabel('btn-c', 'JUMP');
-    this.input.setButtonLabel('btn-d', 'CROUCH');
     const state = this.input.state;
     const mag = Math.min(1, Math.hypot(state.moveX, state.moveY));
     const axis = roadAxisForYaw(this.player.yaw);
@@ -1336,7 +1349,7 @@ export class Game {
     if (d && !swim) {
       if (this.player.onGround) {
         this.player.toggleCrouch();
-        this.setHint(this.player.crouched ? 'Crouched \u2014 D to stand' : 'Standing');
+        this.setHint(this.player.crouched ? 'Crouched \u2014 tap crouch again to stand' : 'Standing');
       } else {
         this.setHint('Land before crouching');
       }
@@ -1642,7 +1655,7 @@ export class Game {
     }
   }
 
-  private updateFlight(dt: number, _a: boolean, b: boolean, _e: boolean, _f: boolean, _r: boolean): void {
+  private updateFlight(dt: number, a: boolean, b: boolean, _e: boolean, _f: boolean, _r: boolean): void {
     const aircraft = this.activeVehicle;
     if (!aircraft) {
       this.recoverOnFoot();
@@ -1802,6 +1815,8 @@ export class Game {
     if (isChopper) {
       const fwd = this.moveFwd.set(Math.sin(this.carYaw), 0, Math.cos(this.carYaw));
       aircraft.group.position.addScaledVector(fwd, this.carSpeed * dt);
+    } else if (a) {
+      this.launchFlare(aircraft);
     }
 
     aircraft.altitude = Math.max(0, aircraft.altitude + aircraft.verticalSpeed * dt);
@@ -1838,10 +1853,6 @@ export class Game {
     this.setHint(
       `✈️ AIRSPEED: ${currentKmh} KM/H  |  ALTITUDE: ${currentAlt} M  |  ${chuteStatus}`
     );
-
-    this.input.setButtonLabel('btn-gas', isChopper ? 'ROTOR' : 'THRUST');
-    this.input.setButtonLabel('btn-c', 'CLIMB');
-    this.input.setButtonLabel('btn-d', 'DIVE');
 
     if (b) {
       // In the air, EXIT turns into a bail-out: the player jumps and the plane
@@ -2276,7 +2287,7 @@ export class Game {
       );
     } else {
       this.setHint(
-        `FREEFALL \u00b7 ${altitude} M \u00b7 ${this.chutes > 0 ? 'B = PARACHUTE' : 'NO CHUTE'}`
+        `FREEFALL \u00b7 ${altitude} M \u00b7 ${this.chutes > 0 ? 'TAP THE CHUTE BUTTON' : 'NO CHUTE'}`
       );
     }
   }
@@ -2647,7 +2658,7 @@ export class Game {
         this.entryCooldown = 0.6;
         this.input.reset();
         this.resetActionTracking();
-        this.setHint('Move stick \u00b7 B enter/use \u00b7 A fire \u00b7 E gun \u00b7 F next gun \u00b7 R reload');
+        this.setHint('Left stick to move \u00b7 right buttons to act \u00b7 weapon icon switches guns (hold to reload)');
       }
     }
   }
@@ -4123,6 +4134,22 @@ export class Game {
     return new THREE.Vector3(-Math.sin(this.camYaw), 0, -Math.cos(this.camYaw));
   }
 
+  /** Orange flare dropped from the wing of a fixed-wing aircraft. */
+  private launchFlare(aircraft: VehicleRig): void {
+    const forward = new THREE.Vector3(Math.sin(this.carYaw), 0, Math.cos(this.carYaw));
+    const from = aircraft.group.position.clone();
+    from.y += 0.6;
+    const to = from.clone().addScaledVector(forward, 12);
+    to.y -= 14;
+    this.spawnTracer(from, to, 0xffa64a);
+    const burst = from.clone().addScaledVector(forward, 10);
+    burst.y -= 10;
+    this.spawnImpact(burst, 0xffb066);
+    this.spawnImpact(to, 0xff8a3c);
+    this.audio.ui();
+    this.showToast('FLARE DEPLOYED');
+  }
+
   private spawnTracer(from: THREE.Vector3, to: THREE.Vector3, color = 0xffe9a0): void {
     const geometry = new THREE.BufferGeometry().setFromPoints([from, to]);
     const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9 });
@@ -4978,187 +5005,36 @@ export class Game {
   }
 
   private disableAllButtons(): void {
-    for (const id of ['btn-a', 'btn-b', 'btn-c', 'btn-d', 'btn-e', 'btn-f', 'btn-r', 'btn-gas', 'btn-rev', 'btn-p', 'btn-x']) {
-      this.input.setButtonEnabled(id, false);
-      this.input.setButtonActive(id, false);
-    }
+    this.input.setControlsEnabled(false);
   }
 
   private updateButtonLabels(): void {
-    if (this.dead || this.dialogueOpen) return;
     const input = this.input;
 
-    if (this.siteSeq || this.mode === 'entering' || this.mode === 'exiting') {
-      this.disableAllButtons();
+    if (this.dead || this.dialogueOpen || this.siteSeq || this.mode === 'entering' || this.mode === 'exiting') {
+      input.setControlsEnabled(false);
       return;
     }
 
+    input.setControlsEnabled(true);
+    input.setWeaponState(this.weapons.spec.name, this.player.armed);
+
     if (this.mode === 'falling') {
-      const fall = this.fall;
-      this.disableAllButtons();
       input.setControlMode('fall');
-      input.setButtonLabel('btn-gas', 'STEER');
-      input.setButtonLabel('btn-c', 'STEER');
-      input.setButtonLabel('btn-d', 'STEER');
-      input.setButtonLabel('btn-p', 'CHUTE');
-      input.setButtonEnabled('btn-p', true);
-      if (!fall?.deployed) {
-        input.setButtonLabel('btn-b', this.chutes > 0 ? 'PARACHUTE' : 'NO CHUTE');
-        input.setButtonLabel('btn-x', 'EJECT');
-        input.setButtonEnabled('btn-b', true);
-        input.setButtonEnabled('btn-x', true);
-      } else {
-        input.setButtonLabel('btn-b', 'CANOPY');
-        input.setButtonEnabled('btn-b', false);
-        input.setButtonLabel('btn-x', 'EJECT');
-        input.setButtonEnabled('btn-x', true);
-      }
       return;
     }
 
     if (this.mode === 'drive') {
-      const aircraft = this.activeVehicle;
-      // Fixed-wing and rotary aircraft get their own button layout. Without
-      // this branch the generic car layout overrode it: "C" was disabled as an
-      // unused JUMP key, so the climb button could not be pressed at all.
-      if (aircraft && (aircraft.kind === 'plane' || aircraft.kind === 'helicopter')) {
-        const isChopper = aircraft.kind === 'helicopter';
-        const airborne = (aircraft.altitude ?? 0) > 3.5;
-        input.setControlMode('flight');
-        input.setButtonLabel('btn-a', 'NO GUN');
-        input.setButtonLabel('btn-b', airborne ? 'JUMP' : 'EXIT');
-        input.setButtonLabel('btn-c', 'CLIMB');
-        input.setButtonLabel('btn-d', 'DIVE');
-        input.setButtonLabel('btn-e', this.player.armed ? 'PUT AWAY' : 'DRAW GUN');
-        input.setButtonLabel('btn-f', 'NEXT GUN');
-        input.setButtonLabel('btn-r', 'RELOAD');
-        input.setButtonLabel('btn-p', 'CHUTE');
-        input.setButtonLabel('btn-x', 'EJECT');
-        input.setButtonEnabled('btn-a', false);
-        input.setButtonEnabled('btn-b', true);
-        input.setButtonEnabled('btn-c', true);
-        input.setButtonEnabled('btn-d', true);
-        input.setButtonEnabled('btn-e', true);
-        input.setButtonEnabled('btn-f', true);
-        input.setButtonEnabled('btn-r', false);
-        input.setButtonEnabled('btn-p', true);
-        input.setButtonEnabled('btn-x', true);
-        input.setButtonLabel('btn-gas', isChopper ? 'ROTOR' : 'THRUST');
-        input.setButtonLabel('btn-rev', 'AIRBRAKE');
-        input.setButtonEnabled('btn-gas', true);
-        input.setButtonEnabled('btn-rev', true);
-        input.setButtonActive('btn-c', input.state.cHeld);
-        input.setButtonActive('btn-d', input.state.dHeld);
-        input.setButtonActive('btn-gas', input.state.gasHeld);
-        input.setButtonActive('btn-rev', input.state.reverseHeld);
-
-        return;
-      }
-
-      const canShoot = this.player.armed && !this.weapons.isMelee;
-      input.setControlMode('drive');
-      input.setButtonLabel('btn-a', canShoot ? 'DRIVE-BY' : 'NO GUN');
-      input.setButtonLabel(
-        'btn-b',
-        this.garageBayContains(this.activeVehicle)
-          ? 'SERVICE'
-          : this.fuelStationNearby(this.activeVehicle)
-            ? 'REFUEL'
-            : 'EXIT CAR'
-      );
-      input.setButtonLabel('btn-c', 'JUMP');
-      input.setButtonLabel('btn-d', 'BRAKE');
-      input.setButtonLabel('btn-e', this.player.armed ? 'PUT AWAY' : 'DRAW GUN');
-      input.setButtonLabel('btn-f', 'NEXT GUN');
-      input.setButtonLabel('btn-r', 'RELOAD');
-      input.setButtonEnabled('btn-a', canShoot);
-      input.setButtonEnabled('btn-b', true);
-      input.setButtonEnabled('btn-c', false);
-      input.setButtonEnabled('btn-d', true);
-      input.setButtonEnabled('btn-e', true);
-      input.setButtonEnabled('btn-f', true);
-      input.setButtonEnabled('btn-r', true);
-      input.setButtonLabel('btn-gas', 'GAS');
-      input.setButtonLabel('btn-rev', 'REVERSE');
-      input.setButtonEnabled('btn-gas', true);
-      input.setButtonEnabled('btn-rev', true);
-      input.setButtonActive('btn-a', canShoot && input.state.aHeld);
-      input.setButtonActive('btn-d', input.state.dHeld || input.state.sprintHeld);
-      input.setButtonActive('btn-e', this.player.armed);
-      input.setButtonActive('btn-gas', input.state.gasHeld);
-      input.setButtonActive('btn-rev', input.state.reverseHeld);
+      const vehicle = this.activeVehicle;
+      if (vehicle?.kind === 'helicopter') input.setControlMode('heli');
+      else if (vehicle?.kind === 'plane') input.setControlMode('plane');
+      else input.setControlMode('car');
       return;
     }
 
-    if (this.inside) {
-      input.setControlMode('foot');
-      const label = this.currentInteriorPoint
-        ? this.currentInteriorPoint.kind === 'exit'
-          ? 'LEAVE'
-          : 'INTERACT'
-        : 'LOOK';
-      input.setButtonLabel('btn-a', this.player.armed ? (this.weapons.isMelee ? 'SLASH' : 'FIRE') : 'PUNCH');
-      input.setButtonLabel('btn-b', label);
-      input.setButtonLabel('btn-c', 'JUMP');
-      input.setButtonLabel('btn-d', this.player.crouched ? 'STAND' : 'CROUCH');
-      input.setButtonLabel('btn-e', this.player.armed ? 'PUT AWAY' : 'DRAW GUN');
-      input.setButtonLabel('btn-f', 'NEXT GUN');
-      input.setButtonLabel('btn-r', 'RELOAD');
-      input.setButtonEnabled('btn-a', true);
-      input.setButtonEnabled('btn-b', true);
-      input.setButtonEnabled('btn-c', true);
-      input.setButtonEnabled('btn-d', true);
-      input.setButtonEnabled('btn-e', true);
-      input.setButtonEnabled('btn-f', true);
-      input.setButtonEnabled('btn-r', true);
-      input.setButtonActive('btn-a', this.player.aiming);
-      input.setButtonActive('btn-d', this.player.crouched);
-      input.setButtonActive('btn-e', this.player.armed);
-      input.setButtonEnabled('btn-gas', false);
-      input.setButtonActive('btn-gas', false);
-      input.setButtonEnabled('btn-rev', false);
-      input.setButtonActive('btn-rev', false);
-      return;
-    }
-
-    const interaction = this.currentInteraction;
     input.setControlMode('foot');
-    const contextLabel = interaction
-      ? interaction.kind === 'giver'
-        ? 'TALK'
-      : interaction.kind === 'fuel'
-        ? 'JERRYCAN'
-        : interaction.kind === 'transit'
-          ? 'DANFO'
-          : 'ENTER CAR'
-      : 'USE';
-    input.setButtonLabel('btn-a', this.player.armed ? (this.weapons.isMelee ? 'SLASH' : 'FIRE') : 'PUNCH');
-    input.setButtonLabel('btn-b', contextLabel);
-    input.setButtonLabel('btn-c', 'JUMP');
-    input.setButtonLabel('btn-d', this.player.crouched ? 'STAND' : 'CROUCH');
-    input.setButtonLabel('btn-e', this.player.armed ? 'PUT AWAY' : 'DRAW GUN');
-    input.setButtonLabel('btn-f', 'NEXT GUN');
-    input.setButtonLabel('btn-r', 'RELOAD');
-    for (const id of ['btn-a', 'btn-b', 'btn-c', 'btn-d', 'btn-e', 'btn-f', 'btn-r']) {
-      input.setButtonEnabled(id, true);
-    }
-    input.setButtonActive('btn-a', this.player.aiming);
-    input.setButtonActive('btn-b', Boolean(interaction));
-    input.setButtonActive('btn-d', this.player.crouched);
-    input.setButtonActive('btn-e', this.player.armed);
-    input.setButtonEnabled('btn-gas', false);
-    input.setButtonActive('btn-gas', false);
-    input.setButtonEnabled('btn-rev', false);
-    input.setButtonActive('btn-rev', false);
-    if (this.chutes > 0) {
-      input.setButtonLabel('btn-p', 'CHUTE');
-      input.setButtonEnabled('btn-p', true);
-      input.setButtonLabel('btn-x', 'EJECT');
-      input.setButtonEnabled('btn-x', false);
-    } else {
-      input.setButtonEnabled('btn-p', false);
-      input.setButtonEnabled('btn-x', false);
-    }
+    // The contextual action stays hidden until there is something to use.
+    input.setEnterVisible(Boolean(this.currentInteraction) || this.inside);
   }
 
   private updateClock(): void {

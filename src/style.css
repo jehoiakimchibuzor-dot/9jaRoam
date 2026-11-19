@@ -44,9 +44,10 @@ body,
 #hud-top {
   position: absolute;
   top: calc(max(0px, env(safe-area-inset-top) - 10px));
-  left: calc(12px + env(safe-area-inset-left));
-  /* Keep the speed readout clear of the minimap parked in the top-right. */
-  right: calc(158px + env(safe-area-inset-right));
+  left: calc(60px + env(safe-area-inset-left));
+  /* Keep the speed readout clear of the minimap and weapon selector in the
+     top-right corner. */
+  right: calc(216px + env(safe-area-inset-right));
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -325,18 +326,118 @@ body,
   inset: 0;
   z-index: 10;
   pointer-events: none;
+  touch-action: none;
 }
 
-.stick-zone {
+/* ---------------------------------------------------------------------------
+   GTA-style touch controls
+   Every button is a soft dark glass disc with a thin white rim and a crisp
+   white line icon. Nothing else is drawn, so the 3D scene stays readable.
+--------------------------------------------------------------------------- */
+.tctrl {
   position: absolute;
-  bottom: calc(10px + env(safe-area-inset-bottom));
-  width: 156px;
-  height: 156px;
   pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  border-radius: 50%;
+  background: rgba(15, 15, 15, 0.45);
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  color: #fff;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  backdrop-filter: blur(2px);
+  transition: transform 90ms ease, background 90ms ease, border-color 90ms ease, opacity 120ms ease;
 }
 
-#stick-left {
-  left: calc(14px + env(safe-area-inset-left));
+.tctrl svg {
+  display: block;
+  width: 44%;
+  height: 44%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tctrl.down {
+  transform: scale(0.9);
+  background: rgba(44, 44, 44, 0.78);
+  border-color: rgba(255, 255, 255, 0.62);
+}
+
+.tctrl.is-hidden {
+  display: none;
+}
+
+.tctrl.is-on {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.65);
+}
+
+/* Corner utility discs: pause top-left, weapon top-right. */
+.corner-btn {
+  width: 46px;
+  height: 46px;
+  z-index: 14;
+}
+
+#btn-pause {
+  top: calc(max(0px, env(safe-area-inset-top) - 10px) + 2px);
+  left: calc(8px + env(safe-area-inset-left));
+}
+
+#btn-weapon {
+  top: calc(max(0px, env(safe-area-inset-top) - 10px) + 2px);
+  right: calc(160px + env(safe-area-inset-right));
+}
+
+#btn-weapon svg {
+  width: 54%;
+  height: 54%;
+}
+
+#btn-weapon.is-armed {
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+/* Locked layer: entering/exiting cutscenes and death keep the controls dimmed
+   and inert instead of vanishing and re-flowing the whole HUD. */
+#controls.is-locked .tctrl,
+#controls.is-locked .move-zone,
+#controls.is-locked .steer-pad {
+  opacity: 0.28;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------- walking stick */
+.move-zone {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: min(44vw, 340px);
+  height: min(62vh, 280px);
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.move-zone.is-hidden {
+  display: none;
+}
+
+.stick-base {
+  position: absolute;
+  left: calc(24px + env(safe-area-inset-left));
+  bottom: calc(26px + env(safe-area-inset-bottom));
+  width: 132px;
+  height: 132px;
+  transition: transform 70ms ease;
 }
 
 .stick-ring {
@@ -344,222 +445,92 @@ body,
   inset: 0;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.16);
-  background: radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.015) 70%);
+  background: radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.01) 70%);
 }
 
 .stick-knob {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 62px;
-  height: 62px;
-  margin: -31px 0 0 -31px;
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
   border-radius: 50%;
-  background: radial-gradient(circle at 38% 32%, rgba(255, 255, 255, 0.55), rgba(215, 220, 225, 0.22) 62%);
-  border: 2px solid rgba(255, 255, 255, 0.42);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
-  transition: transform 0.05s linear;
+  background: rgba(240, 240, 240, 0.24);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  transition: transform 50ms linear;
 }
 
-.abtn {
-  position: relative;
-  pointer-events: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  border-radius: 50%;
-  background: rgba(9, 18, 14, 0.62);
-  border: 2px solid var(--amber-soft);
-  color: var(--amber);
-  font-weight: 800;
-  text-align: center;
-  line-height: 1.1;
-  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6);
-  transition: transform 0.06s ease, background 0.06s ease;
-}
-
-#action-pad {
+/* ------------------------------------------------------------ car steering */
+.steer-pad {
   position: absolute;
-  right: calc(22px + env(safe-area-inset-right));
-  bottom: calc(16px + env(safe-area-inset-bottom));
-  display: grid;
-  grid-template-columns: repeat(3, 72px);
-  grid-auto-rows: 72px;
-  gap: 10px;
+  left: calc(18px + env(safe-area-inset-left));
+  bottom: calc(26px + env(safe-area-inset-bottom));
+  display: flex;
+  gap: 16px;
   pointer-events: none;
-  z-index: 12;
 }
 
-/* One tidy 3x3 pad. GAS and REVERSE sit on the thumb side; the rest fan out
-   to the left so nothing has to be chased across the screen. */
-#action-pad[data-mode="foot"] {
-  grid-template-areas:
-    "e f r"
-    "c d b"
-    "p . a";
-  grid-template-rows: 72px 72px 72px;
-}
-
-/* Drive mode: GAS and REVERSE form a vertical pedal stack under the thumb;
-   DRIVE-BY sits beside them, BRAKE above. */
-#action-pad[data-mode="drive"] {
-  grid-template-areas:
-    "e f b"
-    "r d s"
-    ". a g";
-  grid-template-rows: 72px 72px 72px;
-}
-
-/* Flight mode: GAS bottom-right, CLIMB immediately left, DIVE above CLIMB,
-   AIRBRAKE above GAS. THRUST no longer auto-climbs. */
-#action-pad[data-mode="flight"] {
-  grid-template-areas:
-    "e f p"
-    "b d s"
-    ". c g";
-  grid-template-rows: 72px 72px 72px;
-}
-
-/* Fall mode: steering on C/D/G, parachute above the thumb. */
-#action-pad[data-mode="fall"] {
-  grid-template-areas:
-    "e f b"
-    "x d p"
-    ". c g";
-  grid-template-rows: 72px 72px 72px;
-}
-
-#btn-a { grid-area: a; }
-#btn-b { grid-area: b; }
-#btn-c { grid-area: c; }
-#btn-d { grid-area: d; }
-#btn-e { grid-area: e; }
-#btn-f { grid-area: f; }
-#btn-r { grid-area: r; }
-#btn-rev { grid-area: s; }
-#btn-gas { grid-area: g; }
-#btn-p { grid-area: p; }
-#btn-x { grid-area: x; }
-
-#action-pad[data-mode="foot"] #btn-gas,
-#action-pad[data-mode="foot"] #btn-rev,
-#action-pad[data-mode="foot"] #btn-x,
-#action-pad[data-mode="drive"] #btn-c,
-#action-pad[data-mode="drive"] #btn-p,
-#action-pad[data-mode="drive"] #btn-x,
-#action-pad[data-mode="flight"] #btn-a,
-#action-pad[data-mode="flight"] #btn-r,
-#action-pad[data-mode="flight"] #btn-x,
-#action-pad[data-mode="fall"] #btn-a,
-#action-pad[data-mode="fall"] #btn-r,
-#action-pad[data-mode="fall"] #btn-rev {
+.steer-pad.is-hidden {
   display: none;
 }
 
-/* Pedals are deliberately larger than the utility buttons. */
-#btn-gas {
-  width: 84px;
-  height: 84px;
-  justify-self: center;
-  align-self: center;
-}
-
-#btn-rev {
+.steer-btn {
+  position: relative;
   width: 74px;
   height: 74px;
-  justify-self: center;
-  align-self: center;
 }
 
-#btn-a {
-  width: 78px;
-  height: 78px;
-  justify-self: center;
-  align-self: center;
+.steer-btn svg {
+  width: 40%;
+  height: 40%;
 }
 
-/* Parachute button - teal */
-#btn-p {
-  border-color: rgba(90, 212, 212, 0.6);
-  color: #a8f0e0;
-  background: rgba(10, 40, 40, 0.66);
+/* ------------------------------------------------------------ action arc */
+.arc-primary {
+  right: calc(16px + env(safe-area-inset-right));
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  width: 80px;
+  height: 80px;
 }
 
-/* Eject button - red */
-#btn-x {
-  border-color: rgba(255, 90, 90, 0.6);
-  color: #ff9a9a;
-  background: rgba(40, 10, 10, 0.66);
+.arc-primary svg {
+  width: 42%;
+  height: 42%;
 }
 
-.abtn:active,
-.abtn.down {
-  transform: scale(0.93);
-  background: rgba(255, 210, 74, 0.2);
+.arc-a1 {
+  right: calc(104px + env(safe-area-inset-right));
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  width: 62px;
+  height: 62px;
 }
 
-.abtn.is-disabled {
-  opacity: 0.34;
+.arc-a2 {
+  right: calc(130px + env(safe-area-inset-right));
+  bottom: calc(92px + env(safe-area-inset-bottom));
+  width: 58px;
+  height: 58px;
 }
 
-.abtn.is-active {
-  border-color: rgba(255, 210, 74, 0.9);
-  background: rgba(255, 210, 74, 0.18);
-  box-shadow: 0 0 14px rgba(255, 210, 74, 0.18);
+.arc-a3 {
+  right: calc(96px + env(safe-area-inset-right));
+  bottom: calc(152px + env(safe-area-inset-bottom));
+  width: 56px;
+  height: 56px;
 }
 
-.abtn-letter {
-  font-size: 22px;
-  letter-spacing: 0.02em;
+.arc-a4 {
+  right: calc(30px + env(safe-area-inset-right));
+  bottom: calc(188px + env(safe-area-inset-bottom));
+  width: 52px;
+  height: 52px;
 }
 
-.abtn-sub {
-  font-size: 10px;
-  letter-spacing: 0.02em;
-  opacity: 0.92;
-  margin-top: 2px;
-  max-width: 88%;
-  line-height: 1.05;
-  text-transform: uppercase;
-}
-
-#btn-gas {
-  border-color: rgba(90, 212, 90, 0.6);
-  color: #a8f0a8;
-  background: rgba(10, 30, 16, 0.66);
-}
-
-#btn-rev {
-  border-color: rgba(255, 160, 70, 0.65);
-  color: #ffcf9a;
-  background: rgba(34, 20, 8, 0.66);
-}
-
-#btn-rev .abtn-letter {
-  font-size: 18px;
-}
-
-#btn-gas .abtn-letter {
-  font-size: 26px;
-}
-
-#btn-rev .abtn-sub {
-  font-size: 8px;
-}
-
-#btn-gas.is-disabled {
-  opacity: 0.2;
-}
-
-#btn-gas.is-active {
-  border-color: rgba(90, 240, 120, 0.95);
-  background: rgba(40, 180, 80, 0.3);
-  box-shadow: 0 0 18px rgba(60, 230, 110, 0.35);
+/* Destructive/contextual rim tints stay subtle so the icons still lead. */
+#act-a3[aria-label*="Exit"] {
+  border-color: rgba(255, 255, 255, 0.34);
 }
 
 #rotate {
@@ -606,57 +577,77 @@ body,
 }
 
 @media (max-height: 430px) {
-  .stick-zone {
-    width: 128px;
-    height: 128px;
+  .move-zone {
+    width: min(46vw, 320px);
+    height: min(64vh, 260px);
+  }
+
+  .stick-base {
+    width: 118px;
+    height: 118px;
+    left: calc(20px + env(safe-area-inset-left));
+    bottom: calc(22px + env(safe-area-inset-bottom));
   }
 
   .stick-knob {
+    width: 50px;
+    height: 50px;
+    margin: -25px 0 0 -25px;
+  }
+
+  .steer-pad {
+    left: calc(16px + env(safe-area-inset-left));
+    bottom: calc(22px + env(safe-area-inset-bottom));
+    gap: 12px;
+  }
+
+  .steer-btn {
+    width: 66px;
+    height: 66px;
+  }
+
+  .arc-primary {
+    right: calc(14px + env(safe-area-inset-right));
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    width: 76px;
+    height: 76px;
+  }
+
+  .arc-a1 {
+    right: calc(96px + env(safe-area-inset-right));
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    width: 58px;
+    height: 58px;
+  }
+
+  .arc-a2 {
+    right: calc(120px + env(safe-area-inset-right));
+    bottom: calc(84px + env(safe-area-inset-bottom));
+    width: 54px;
+    height: 54px;
+  }
+
+  .arc-a3 {
+    right: calc(88px + env(safe-area-inset-right));
+    bottom: calc(144px + env(safe-area-inset-bottom));
     width: 52px;
     height: 52px;
-    margin: -26px 0 0 -26px;
   }
 
-  #action-pad {
-    right: calc(24px + env(safe-area-inset-right));
-    bottom: calc(12px + env(safe-area-inset-bottom));
-    grid-template-columns: repeat(3, 64px);
-    grid-auto-rows: 64px;
-    gap: 10px;
+  .arc-a4 {
+    right: calc(26px + env(safe-area-inset-right));
+    bottom: calc(170px + env(safe-area-inset-bottom));
+    width: 48px;
+    height: 48px;
   }
 
-  #action-pad[data-mode="foot"],
-  #action-pad[data-mode="drive"],
-  #action-pad[data-mode="flight"],
-  #action-pad[data-mode="fall"] {
-    grid-template-rows: 64px 64px 64px;
+  .corner-btn {
+    width: 40px;
+    height: 40px;
   }
 
-  #btn-gas {
-    width: 78px;
-    height: 78px;
-  }
-
-  #btn-rev {
-    width: 68px;
-    height: 68px;
-  }
-
-  #btn-a {
-    width: 72px;
-    height: 72px;
-  }
-
-  .abtn-letter {
-    font-size: 18px;
-  }
-
-  .abtn-sub {
-    font-size: 8px;
-  }
-
-  #btn-gas .abtn-letter {
-    font-size: 22px;
+  #btn-weapon {
+    right: calc(148px + env(safe-area-inset-right));
   }
 
   #minimap {
@@ -1173,23 +1164,13 @@ body,
   color: #ffd6ce;
 }
 
-#btn-f .abtn-letter,
-#btn-r .abtn-letter {
-  font-size: 17px;
-}
-
-#btn-f .abtn-sub,
-#btn-r .abtn-sub {
-  font-size: 7px;
-}
-
 @media (max-height: 430px) {
   #hud-top {
-    right: calc(128px + env(safe-area-inset-right));
+    right: calc(204px + env(safe-area-inset-right));
   }
 
   #status {
-    top: calc(40px + max(0px, env(safe-area-inset-top) - 10px));
+    top: calc(46px + max(0px, env(safe-area-inset-top) - 10px));
     width: 176px;
     padding: 6px 8px;
     gap: 3px;
