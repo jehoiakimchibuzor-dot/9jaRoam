@@ -61,6 +61,7 @@ type Slot = 'primary' | 'a1' | 'a2' | 'a3' | 'a4';
 interface ActionSpec {
   icon: IconName;
   label: string;
+  short?: string;
   down?: () => void;
   up?: () => void;
 }
@@ -129,6 +130,7 @@ export class Input {
 
   private pauseButton!: HTMLButtonElement;
   private weaponButton!: HTMLButtonElement;
+  private helpSheet!: HTMLDivElement;
   private weaponLabel = '';
   private paused = false;
   private locked = false;
@@ -148,6 +150,7 @@ export class Input {
     this.buildMoveStick();
     this.buildSteering();
     this.buildArc();
+    this.buildHelpSheet();
     this.applyLayout();
     this.bindKeyboard();
     this.bindCanvasLook();
@@ -164,28 +167,85 @@ export class Input {
     this.pauseButton = document.createElement('button');
     this.pauseButton.type = 'button';
     this.pauseButton.id = 'btn-pause';
-    this.pauseButton.className = 'tctrl corner-btn';
+    this.pauseButton.className = 'tctrl corner-btn has-label';
     this.pauseButton.setAttribute('aria-label', 'Pause');
-    this.pauseButton.innerHTML = this.svg('pause');
     this.pauseButton.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       e.stopPropagation();
       this.paused = !this.paused;
-      this.pauseButton.innerHTML = this.svg(this.paused ? 'play' : 'pause');
       this.pauseButton.classList.toggle('is-on', this.paused);
       this.pauseButton.setAttribute('aria-label', this.paused ? 'Resume' : 'Pause');
+      this.renderPauseButton();
+      this.updateHelpSheet();
       this.onPause?.(this.paused);
     });
     this.root.append(this.pauseButton);
+    this.renderPauseButton();
 
     this.weaponButton = document.createElement('button');
     this.weaponButton.type = 'button';
     this.weaponButton.id = 'btn-weapon';
-    this.weaponButton.className = 'tctrl corner-btn';
+    this.weaponButton.className = 'tctrl corner-btn has-label';
     this.weaponButton.setAttribute('aria-label', 'Weapon selector');
-    this.weaponButton.innerHTML = this.svg('weapon');
+    this.weaponButton.innerHTML = `${this.svg('weapon')}<span class="tctrl-label">WEAPON</span>`;
     this.bindWeaponButton();
     this.root.append(this.weaponButton);
+  }
+
+  private renderPauseButton(): void {
+    this.pauseButton.innerHTML = `${this.svg(this.paused ? 'play' : 'pause')}<span class="tctrl-label">${this.paused ? 'RESUME' : 'PAUSE'}</span>`;
+  }
+
+  /* Pause doubles as the "how do I play this?" screen. The card is built from
+     the same action specs that drive the buttons, so it can never go stale. */
+  private buildHelpSheet(): void {
+    this.helpSheet = document.createElement('div');
+    this.helpSheet.id = 'controls-help';
+    this.helpSheet.setAttribute('role', 'status');
+    this.helpSheet.hidden = true;
+    this.root.append(this.helpSheet);
+  }
+
+  private updateHelpSheet(): void {
+    if (!this.paused) {
+      this.helpSheet.hidden = true;
+      return;
+    }
+    this.renderHelpSheet();
+    this.helpSheet.hidden = false;
+  }
+
+  private renderHelpSheet(): void {
+    const titles: Record<ControlMode, [string, string]> = {
+      foot: ['ON FOOT', 'Drag MOVE to walk · drag the open screen to look around'],
+      car: ['DRIVING', 'Tap LEFT / RIGHT to steer · drag the open screen to look around'],
+      heli: ['HELICOPTER', 'Drag MOVE to fly and turn · drag the open screen to look around'],
+      plane: ['AIRPLANE', 'Drag MOVE to fly and turn · drag the open screen to look around'],
+      fall: ['FREE FALL', 'Drag MOVE to steer · open the CHUTE before you hit the ground']
+    };
+    const [title, subtitle] = titles[this.mode];
+    const rows: string[] = [];
+
+    if (this.mode === 'car') {
+      rows.push('<span class="help-key">LEFT / RIGHT</span><span class="help-desc">Steer the car</span>');
+    } else {
+      rows.push(`<span class="help-key">MOVE</span><span class="help-desc">${this.mode === 'foot' ? 'Walk in any direction' : 'Steer'}</span>`);
+    }
+
+    for (const slot of ['primary', 'a1', 'a2', 'a3', 'a4'] as Slot[]) {
+      const spec = this.actionSpecs[slot];
+      if (!spec) continue;
+      rows.push(`<span class="help-key">${spec.short ?? spec.label}</span><span class="help-desc">${spec.label}</span>`);
+    }
+
+    rows.push('<span class="help-key">WEAPON</span><span class="help-desc">Tap to switch weapon · hold to reload</span>');
+
+    this.helpSheet.innerHTML =
+      `<p class="help-title">${title} · PAUSED</p>` +
+      `<p class="help-sub">${subtitle}</p>` +
+      `<div class="help-grid">${rows.join('')}</div>` +
+      '<p class="help-desktop">KEYBOARD: WASD / arrows move · Shift run · Space jump or handbrake · ' +
+      'E enter or exit · F fire · R eject or reload</p>';
   }
 
   private bindWeaponButton(): void {
@@ -232,7 +292,7 @@ export class Input {
     zone.className = 'move-zone';
     const base = document.createElement('div');
     base.className = 'stick-base';
-    base.innerHTML = '<div class="stick-ring"></div><div class="stick-knob"></div>';
+    base.innerHTML = '<div class="stick-ring"></div><span class="stick-label">MOVE</span><div class="stick-knob"></div>';
     zone.append(base);
     this.root.append(zone);
     this.moveZone = zone;
@@ -303,15 +363,15 @@ export class Input {
     const left = document.createElement('button');
     left.type = 'button';
     left.id = 'btn-steer-left';
-    left.className = 'tctrl steer-btn';
+    left.className = 'tctrl steer-btn has-label';
     left.setAttribute('aria-label', 'Steer left');
-    left.innerHTML = this.svg('back');
+    left.innerHTML = `${this.svg('back')}<span class="tctrl-label">LEFT</span>`;
     const right = document.createElement('button');
     right.type = 'button';
     right.id = 'btn-steer-right';
-    right.className = 'tctrl steer-btn';
+    right.className = 'tctrl steer-btn has-label';
     right.setAttribute('aria-label', 'Steer right');
-    right.innerHTML = this.svg('forward');
+    right.innerHTML = `${this.svg('forward')}<span class="tctrl-label">RIGHT</span>`;
     pad.append(left, right);
     this.root.append(pad);
     this.steerPad = pad;
@@ -353,7 +413,7 @@ export class Input {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.id = `act-${slot}`;
-      btn.className = `tctrl arc-${slot}`;
+      btn.className = `tctrl arc-${slot} has-label`;
       btn.innerHTML = this.svg('fire');
       btn.classList.add('is-hidden');
       this.root.append(btn);
@@ -406,6 +466,7 @@ export class Input {
         this.setAction('primary', {
           icon: 'fire',
           label: 'Attack',
+          short: 'FIRE',
           down: () => {
             this.touchA = true;
             this.state.aPressed = true;
@@ -419,6 +480,7 @@ export class Input {
         this.setAction('a1', {
           icon: 'sprint',
           label: 'Sprint',
+          short: 'RUN',
           down: () => {
             this.touchSprint = true;
             this.refreshHeldFlags();
@@ -431,6 +493,7 @@ export class Input {
         this.setAction('a2', {
           icon: 'jump',
           label: 'Jump',
+          short: 'JUMP',
           down: () => {
             this.touchC = true;
             this.state.cPressed = true;
@@ -441,13 +504,14 @@ export class Input {
             this.refreshHeldFlags();
           }
         });
-        this.setAction('a3', { icon: 'hand', label: 'Enter vehicle', down: () => (this.state.bPressed = true) });
+        this.setAction('a3', { icon: 'hand', label: 'Interact · enter vehicle', short: 'USE', down: () => (this.state.bPressed = true) });
         break;
 
       case 'car':
         this.setAction('primary', {
           icon: 'forward',
           label: 'Accelerate',
+          short: 'GAS',
           down: () => {
             this.touchGas = true;
             this.refreshHeldFlags();
@@ -460,6 +524,7 @@ export class Input {
         this.setAction('a1', {
           icon: 'back',
           label: 'Brake / reverse',
+          short: 'BRAKE',
           down: () => {
             this.touchReverse = true;
             this.refreshHeldFlags();
@@ -472,6 +537,7 @@ export class Input {
         this.setAction('a2', {
           icon: 'handbrake',
           label: 'Handbrake',
+          short: 'DRIFT',
           down: () => {
             this.touchD = true;
             this.state.dPressed = true;
@@ -482,13 +548,14 @@ export class Input {
             this.refreshHeldFlags();
           }
         });
-        this.setAction('a3', { icon: 'exit', label: 'Exit vehicle', down: () => (this.state.bPressed = true) });
+        this.setAction('a3', { icon: 'exit', label: 'Exit vehicle', short: 'EXIT', down: () => (this.state.bPressed = true) });
         break;
 
       case 'heli':
         this.setAction('primary', {
           icon: 'up',
           label: 'Ascend',
+          short: 'UP',
           down: () => {
             this.touchGas = true;
             this.refreshHeldFlags();
@@ -501,6 +568,7 @@ export class Input {
         this.setAction('a1', {
           icon: 'down',
           label: 'Descend',
+          short: 'DOWN',
           down: () => {
             this.touchD = true;
             this.refreshHeldFlags();
@@ -513,22 +581,25 @@ export class Input {
         this.setAction('a2', {
           icon: 'yawLeft',
           label: 'Yaw left',
+          short: 'YAW L',
           down: () => this.setYawButton('left', true),
           up: () => this.setYawButton('left', false)
         });
         this.setAction('a3', {
           icon: 'yawRight',
           label: 'Yaw right',
+          short: 'YAW R',
           down: () => this.setYawButton('right', true),
           up: () => this.setYawButton('right', false)
         });
-        this.setAction('a4', { icon: 'exit', label: 'Exit helicopter', down: () => (this.state.bPressed = true) });
+        this.setAction('a4', { icon: 'exit', label: 'Exit helicopter', short: 'EXIT', down: () => (this.state.bPressed = true) });
         break;
 
       case 'plane':
         this.setAction('primary', {
           icon: 'up',
           label: 'Throttle up',
+          short: 'GAS',
           down: () => {
             this.touchGas = true;
             this.refreshHeldFlags();
@@ -541,6 +612,7 @@ export class Input {
         this.setAction('a1', {
           icon: 'down',
           label: 'Throttle down / airbrake',
+          short: 'SLOW',
           down: () => {
             this.touchReverse = true;
             this.refreshHeldFlags();
@@ -553,6 +625,7 @@ export class Input {
         this.setAction('a2', {
           icon: 'flame',
           label: 'Fire / flare',
+          short: 'FIRE',
           down: () => {
             this.touchA = true;
             this.state.aPressed = true;
@@ -563,19 +636,20 @@ export class Input {
             this.refreshHeldFlags();
           }
         });
-        this.setAction('a3', { icon: 'exit', label: 'Exit airplane', down: () => (this.state.bPressed = true) });
+        this.setAction('a3', { icon: 'exit', label: 'Exit airplane', short: 'EXIT', down: () => (this.state.bPressed = true) });
         break;
 
       case 'fall':
         this.setAction('primary', {
           icon: 'chute',
           label: 'Deploy parachute',
+          short: 'CHUTE',
           down: () => {
             this.state.bPressed = true;
             this.state.chutePressed = true;
           }
         });
-        this.setAction('a1', { icon: 'eject', label: 'Eject', down: () => (this.state.ejectPressed = true) });
+        this.setAction('a1', { icon: 'eject', label: 'Eject', short: 'EJECT', down: () => (this.state.ejectPressed = true) });
         break;
     }
   }
@@ -583,7 +657,7 @@ export class Input {
   private setAction(slot: Slot, spec: ActionSpec): void {
     this.actionSpecs[slot] = spec;
     const btn = this.actionButtons[slot];
-    btn.innerHTML = this.svg(spec.icon);
+    btn.innerHTML = `${this.svg(spec.icon)}<span class="tctrl-label">${spec.short ?? spec.label}</span>`;
     btn.setAttribute('aria-label', spec.label);
     btn.title = spec.label;
     btn.classList.remove('is-hidden');
@@ -745,6 +819,7 @@ export class Input {
     this.mode = mode;
     this.reset();
     this.applyLayout();
+    if (this.paused) this.updateHelpSheet();
   }
 
   /** Hide/show the contextual foot interaction button. */
@@ -774,8 +849,9 @@ export class Input {
   /** Kept for the pause overlay, which can resume the game externally. */
   setPaused(paused: boolean): void {
     this.paused = paused;
-    this.pauseButton.innerHTML = this.svg(paused ? 'play' : 'pause');
+    this.renderPauseButton();
     this.pauseButton.classList.toggle('is-on', paused);
+    this.updateHelpSheet();
   }
 
   consumeA(): boolean {

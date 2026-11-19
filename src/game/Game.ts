@@ -883,7 +883,7 @@ export class Game {
     window.addEventListener('keydown', unlock, { once: true });
     window.addEventListener('resize', () => this.onResize());
 
-    this.setHint('Left stick to move \u00b7 right buttons to act \u00b7 weapon icon switches guns (hold to reload)');
+    this.setHint('Drag MOVE to walk \u00b7 every button is labelled \u00b7 tap PAUSE for the full controls');
   }
 
   start(): void {
@@ -899,7 +899,8 @@ export class Game {
     this.paused = paused;
     this.input.reset();
     this.input.setPaused(paused);
-    this.setHint(paused ? 'PAUSED \u00b7 tap the pause button to resume' : '');
+    // The pause card already explains the controls, so no extra hint is needed.
+    this.setHint('');
     this.audio.ui();
   }
 
@@ -2197,7 +2198,7 @@ export class Game {
     this.audio.siren(false);
     if (this.chutes > 0) {
       this.showToast('BAILED OUT \u00b7 TAP B TO OPEN THE CHUTE');
-      this.setHint('Freefall \u2014 tap B for the parachute.');
+      this.setHint('Freefall \u2014 tap CHUTE for the parachute.');
     } else {
       this.showToast('BAILED OUT WITHOUT A PARACHUTE!');
       this.setHint('No parachute. You are not going to survive this.');
@@ -2523,7 +2524,7 @@ export class Game {
       this.chutes = Math.min(5, this.chutes + 1);
       this.audio.ui();
       this.showToast(`PARACHUTE PACKED \u00b7 ${this.chutes} IN THE BAG`);
-      this.setHint('Press B in the air to open the parachute.');
+      this.setHint('Press CHUTE in the air to open the parachute.');
     }
   }
 
@@ -2632,7 +2633,7 @@ export class Game {
         this.carYaw = vehicle.group.rotation.y;
         this.carSpeed = 0;
         this.resetActionTracking();
-        this.setHint('Hold GAS \u00b7 steer with stick \u00b7 D brake \u00b7 A drive-by \u00b7 B exit');
+        this.setHint('Hold GAS to drive · steer with LEFT / RIGHT · DRIFT to slide · EXIT to get out');
       }
     } else {
       const doorT = clamp(t / 0.35, 0, 1);
@@ -2658,7 +2659,7 @@ export class Game {
         this.entryCooldown = 0.6;
         this.input.reset();
         this.resetActionTracking();
-        this.setHint('Left stick to move \u00b7 right buttons to act \u00b7 weapon icon switches guns (hold to reload)');
+        this.setHint('Drag MOVE to walk \u00b7 every button is labelled \u00b7 tap PAUSE for the full controls');
       }
     }
   }
@@ -2765,7 +2766,7 @@ export class Game {
       if (seq.t >= 1.0) {
         this.siteSeq = null;
         this.mode = 'foot';
-        this.setHint(`Inside ${seq.site.label} \u00b7 B near the counter, people or exit`);
+        this.setHint(`Inside ${seq.site.label} \u00b7 USE near the counter, people or exit`);
       }
       return;
     }
@@ -2782,7 +2783,7 @@ export class Game {
       this.interiors.setEntranceOpen(seq.site.id, false);
       this.entryCooldown = 1.2;
       this.autoEntryLock = true;
-      this.setHint('Back outside \u00b7 B to enter again');
+      this.setHint('Back outside \u00b7 USE to go in again');
     }
   }
 
