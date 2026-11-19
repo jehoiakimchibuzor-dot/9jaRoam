@@ -53,3 +53,6 @@ captures/
 *.log
 .DS_Store
 Thumbs.db
+
+# Firebase deploy scratch space
+.firebase/
