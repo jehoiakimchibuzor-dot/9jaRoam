@@ -131,10 +131,89 @@ function requestGameFullscreen(): void {
 // and lock the phone to landscape. Retry on later taps if the browser refused.
 window.addEventListener('pointerdown', requestGameFullscreen, { capture: true });
 
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+}
+
+const INSTALL_DISMISS_KEY = '9ja_roam_install_prompt_dismissed';
+const installBanner = document.getElementById('install-banner');
+const installBannerText = document.getElementById('install-banner-text');
+const installAccept = document.getElementById('install-banner-accept');
+const installClose = document.getElementById('install-banner-close');
+const installHudButton = document.getElementById('install-app');
+
+const isStandalone =
+  window.matchMedia('(display-mode: standalone)').matches ||
+  window.matchMedia('(display-mode: fullscreen)').matches ||
+  (navigator as Navigator & { standalone?: boolean }).standalone === true;
+
+let installPrompt: BeforeInstallPromptEvent | null = null;
+
+function showInstallUi(): void {
+  if (isStandalone || sessionStorage.getItem(INSTALL_DISMISS_KEY)) return;
+  installHudButton?.removeAttribute('hidden');
+  installBanner?.removeAttribute('hidden');
+}
+
+function hideInstallUi(): void {
+  installHudButton?.setAttribute('hidden', '');
+  installBanner?.setAttribute('hidden', '');
+}
+
+async function promptInstall(): Promise<void> {
+  if (!installPrompt) return;
+
+  const prompt = installPrompt;
+  installPrompt = null;
+
+  try {
+    await prompt.prompt();
+    const choice = await prompt.userChoice;
+    if (choice.outcome === 'dismissed') {
+      sessionStorage.setItem(INSTALL_DISMISS_KEY, 'true');
+    }
+  } finally {
+    hideInstallUi();
+  }
+}
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  installPrompt = event as BeforeInstallPromptEvent;
+  showInstallUi();
+});
+
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  hideInstallUi();
+});
+
+installAccept?.addEventListener('click', () => {
+  void promptInstall();
+});
+
+installHudButton?.addEventListener('click', () => {
+  void promptInstall();
+});
+
+installClose?.addEventListener('click', () => {
+  hideInstallUi();
+  sessionStorage.setItem(INSTALL_DISMISS_KEY, 'true');
+});
+
+// iOS Safari has no install prompt event, so show the Share-sheet instruction.
+const isIosBrowser = /iphone|ipad|ipod/i.test(navigator.userAgent) && !/crios|fxios|edgios/i.test(navigator.userAgent);
+if (isIosBrowser && !isStandalone && !sessionStorage.getItem(INSTALL_DISMISS_KEY) && installBanner) {
+  if (installBannerText) {
+    installBannerText.textContent = 'Tap Share, then “Add to Home Screen”';
+  }
+  installAccept?.setAttribute('hidden', '');
+  installBanner.removeAttribute('hidden');
+}
+
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {
-      // Offline support is optional; ignore registration failures.
-    });
+  void navigator.serviceWorker.register('./sw.js').catch(() => {
+    // Offline support is optional; ignore registration failures.
   });
 }

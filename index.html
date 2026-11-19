@@ -27,6 +27,11 @@
             <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
           </svg>
         </button>
+        <button id="install-app" type="button" aria-label="Install app" title="Install app" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 4v10m0 0 4-4m-4 4-4-4M5 19h14" />
+          </svg>
+        </button>
         <div id="hud-top">
           <div id="location">
             <div id="zone">Kano Municipal</div>
@@ -258,6 +263,15 @@
             <button id="btn-submit-register" type="button" class="flow-btn flow-btn-full">REGISTER & PLAY</button>
           </div>
         </div>
+      </div>
+
+      <div id="install-banner" role="dialog" aria-label="Install 9ja Roam" hidden>
+        <div class="install-banner-copy">
+          <strong>INSTALL 9JA ROAM</strong>
+          <span id="install-banner-text">Fullscreen play · no browser bar</span>
+        </div>
+        <button id="install-banner-accept" type="button">INSTALL</button>
+        <button id="install-banner-close" type="button" aria-label="Dismiss install prompt">×</button>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
