@@ -244,7 +244,7 @@ export class Input {
       `<p class="help-title">${title} · PAUSED</p>` +
       `<p class="help-sub">${subtitle}</p>` +
       `<div class="help-grid">${rows.join('')}</div>` +
-      '<p class="help-desktop">KEYBOARD: WASD / arrows move · Shift run · Space jump or handbrake · ' +
+      '<p class="help-desktop">KEYBOARD: WASD / arrows move · Shift sprint · Space jump or handbrake · ' +
       'E enter or exit · F fire · R eject or reload</p>';
   }
 
@@ -466,7 +466,7 @@ export class Input {
         this.setAction('primary', {
           icon: 'fire',
           label: 'Attack',
-          short: 'FIRE',
+          short: 'ATTACK',
           down: () => {
             this.touchA = true;
             this.state.aPressed = true;
@@ -480,7 +480,7 @@ export class Input {
         this.setAction('a1', {
           icon: 'sprint',
           label: 'Sprint',
-          short: 'RUN',
+          short: 'SPRINT',
           down: () => {
             this.touchSprint = true;
             this.refreshHeldFlags();
@@ -537,7 +537,7 @@ export class Input {
         this.setAction('a2', {
           icon: 'handbrake',
           label: 'Handbrake',
-          short: 'DRIFT',
+          short: 'H-BRAKE',
           down: () => {
             this.touchD = true;
             this.state.dPressed = true;

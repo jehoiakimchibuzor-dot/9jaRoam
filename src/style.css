@@ -760,8 +760,10 @@ body {
 }
 
 /* ------------------------------------------------------------ action arc */
+/* The main action (GAS / ATTACK) sits slightly inboard of the rim so it is
+   easy to reach; the secondary action (BRAKE / SPRINT) sits at the corner. */
 .arc-primary {
-  right: calc(16px + env(safe-area-inset-right));
+  right: calc(80px + env(safe-area-inset-right));
   bottom: calc(14px + env(safe-area-inset-bottom));
   width: 80px;
   height: 80px;
@@ -773,22 +775,22 @@ body {
 }
 
 .arc-a1 {
-  right: calc(104px + env(safe-area-inset-right));
-  bottom: calc(18px + env(safe-area-inset-bottom));
+  right: calc(12px + env(safe-area-inset-right));
+  bottom: calc(16px + env(safe-area-inset-bottom));
   width: 62px;
   height: 62px;
 }
 
 .arc-a2 {
-  right: calc(130px + env(safe-area-inset-right));
-  bottom: calc(92px + env(safe-area-inset-bottom));
+  right: calc(128px + env(safe-area-inset-right));
+  bottom: calc(96px + env(safe-area-inset-bottom));
   width: 58px;
   height: 58px;
 }
 
 .arc-a3 {
-  right: calc(96px + env(safe-area-inset-right));
-  bottom: calc(152px + env(safe-area-inset-bottom));
+  right: calc(92px + env(safe-area-inset-right));
+  bottom: calc(158px + env(safe-area-inset-bottom));
   width: 56px;
   height: 56px;
 }
@@ -910,29 +912,29 @@ body {
   }
 
   .arc-primary {
-    right: calc(14px + env(safe-area-inset-right));
+    right: calc(74px + env(safe-area-inset-right));
     bottom: calc(12px + env(safe-area-inset-bottom));
     width: 76px;
     height: 76px;
   }
 
   .arc-a1 {
-    right: calc(96px + env(safe-area-inset-right));
+    right: calc(10px + env(safe-area-inset-right));
     bottom: calc(16px + env(safe-area-inset-bottom));
     width: 58px;
     height: 58px;
   }
 
   .arc-a2 {
-    right: calc(120px + env(safe-area-inset-right));
-    bottom: calc(84px + env(safe-area-inset-bottom));
+    right: calc(118px + env(safe-area-inset-right));
+    bottom: calc(92px + env(safe-area-inset-bottom));
     width: 54px;
     height: 54px;
   }
 
   .arc-a3 {
-    right: calc(88px + env(safe-area-inset-right));
-    bottom: calc(144px + env(safe-area-inset-bottom));
+    right: calc(84px + env(safe-area-inset-right));
+    bottom: calc(150px + env(safe-area-inset-bottom));
     width: 52px;
     height: 52px;
   }

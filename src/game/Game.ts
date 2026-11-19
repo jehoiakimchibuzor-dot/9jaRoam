@@ -2633,7 +2633,7 @@ export class Game {
         this.carYaw = vehicle.group.rotation.y;
         this.carSpeed = 0;
         this.resetActionTracking();
-        this.setHint('Hold GAS to drive · steer with LEFT / RIGHT · DRIFT to slide · EXIT to get out');
+        this.setHint('Hold GAS to drive · steer with LEFT / RIGHT · H-BRAKE to slide · EXIT to get out');
       }
     } else {
       const doorT = clamp(t / 0.35, 0, 1);
