@@ -10,14 +10,23 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="9ja Roam" />
+    <meta name="description" content="Low-poly 3D open-world game set in Kano, Nigeria. Drive, fly, hustle and roam the city streets." />
     <title>9ja Roam</title>
-    <link rel="icon" href="data:," />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
   </head>
   <body>
     <div id="app">
       <canvas id="scene"></canvas>
       <div id="damage-flash"></div>
       <div id="hud">
+        <button id="fullscreen-toggle" type="button" aria-label="Enter fullscreen" title="Fullscreen">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+          </svg>
+        </button>
         <div id="hud-top">
           <div id="location">
             <div id="zone">Kano Municipal</div>

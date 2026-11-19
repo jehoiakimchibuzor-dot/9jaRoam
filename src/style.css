@@ -25,6 +25,24 @@ body,
   -webkit-user-select: none;
 }
 
+html,
+body {
+  overscroll-behavior: none;
+}
+
+/* Fill the physical screen on phones. 100dvh tracks the dynamic browser
+   toolbar, so the game never leaves a gap under the address bar. */
+#app {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+}
+
 #scene {
   position: absolute;
   inset: 0;
@@ -41,10 +59,55 @@ body,
   z-index: 5;
 }
 
+#fullscreen-toggle {
+  position: absolute;
+  top: calc(max(0px, env(safe-area-inset-top) - 10px) + 8px);
+  left: calc(58px + env(safe-area-inset-left));
+  z-index: 14;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  border-radius: 50%;
+  background: rgba(15, 15, 15, 0.45);
+  color: #fff;
+  font: inherit;
+  line-height: 1;
+  pointer-events: auto;
+  touch-action: manipulation;
+  cursor: pointer;
+  backdrop-filter: blur(2px);
+  transition: transform 90ms ease, background 90ms ease, border-color 90ms ease;
+}
+
+#fullscreen-toggle svg {
+  display: block;
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#fullscreen-toggle:active {
+  transform: scale(0.9);
+}
+
+#fullscreen-toggle.is-fullscreen {
+  color: var(--amber);
+  border-color: rgba(255, 210, 74, 0.6);
+  background: rgba(255, 210, 74, 0.16);
+}
+
 #hud-top {
   position: absolute;
   top: calc(max(0px, env(safe-area-inset-top) - 10px));
-  left: calc(60px + env(safe-area-inset-left));
+  left: calc(102px + env(safe-area-inset-left));
   /* Keep the speed readout clear of the minimap and weapon selector in the
      top-right corner. */
   right: calc(216px + env(safe-area-inset-right));
@@ -577,6 +640,21 @@ body,
 }
 
 @media (max-height: 430px) {
+  #fullscreen-toggle {
+    left: calc(52px + env(safe-area-inset-left));
+    width: 30px;
+    height: 30px;
+  }
+
+  #fullscreen-toggle svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  #hud-top {
+    left: calc(92px + env(safe-area-inset-left));
+  }
+
   .move-zone {
     width: min(46vw, 320px);
     height: min(64vh, 260px);
