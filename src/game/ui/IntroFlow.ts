@@ -11,6 +11,7 @@ export class IntroFlow {
   private selectedGender: 'male' | 'female' = 'male';
   private selectedOccupation = 'Hustler';
   private characterPreview: CharacterPreview | null = null;
+  private restoredUserPromise: Promise<UserProfile | null> | null = null;
   private currentSlideIndex = 0;
 
   constructor(private onComplete: (user: UserProfile) => void) {}
@@ -21,6 +22,12 @@ export class IntroFlow {
     this.authEl = document.getElementById('auth-screen');
     this.charEl = document.getElementById('character-screen');
 
+    // Start restoring immediately, in parallel with the splash animation.
+    this.restoredUserPromise = this.authService.restoreSession();
+    const splashStatus = document.querySelector('.splash-status');
+    if (splashStatus && this.authService.getStoredUser()) {
+      splashStatus.textContent = 'WELCOME BACK…';
+    }
     this.runSplashSequence();
   }
 
@@ -44,11 +51,27 @@ export class IntroFlow {
     }
 
     setTimeout(() => {
-      this.splashEl?.classList.remove('is-active');
-      this.splashEl?.classList.add('is-hidden');
-      document.body.classList.remove('splash-active');
-      this.checkOnboarding();
+      void this.finishSplash();
     }, 2400);
+  }
+
+  /** Decide the first screen only after any saved login has been verified. */
+  private async finishSplash(): Promise<void> {
+    const restored = await (this.restoredUserPromise ?? Promise.resolve(null));
+
+    this.splashEl?.classList.remove('is-active');
+    this.splashEl?.classList.add('is-hidden');
+    document.body.classList.remove('splash-active');
+
+    if (restored && this.authService.hasCompletedPersona()) {
+      this.complete(restored);
+      return;
+    }
+    if (restored) {
+      this.showCharacterScreen(restored);
+      return;
+    }
+    this.checkOnboarding();
   }
 
   private checkOnboarding(): void {
@@ -349,6 +372,7 @@ export class IntroFlow {
 
     btnCreate?.addEventListener('click', () => {
       clearError();
+      this.authService.markPersonaComplete();
 
       const updatedUser = this.authService.updateCharacter({
         avatar: this.selectedAvatar,

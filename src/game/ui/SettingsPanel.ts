@@ -101,13 +101,17 @@ export class SettingsPanel {
   }
 
   private refresh(): void {
-    const user = this.auth.getCurrentUser();
-    const signedIn = !user.isGuest;
+    // Do not create a throwaway guest just by opening the settings panel;
+    // that would make the next cold start look like a saved player session.
+    const user = this.auth.getStoredUser();
+    const signedIn = Boolean(user && !user.isGuest);
 
     if (this.statusEl) {
-      this.statusEl.textContent = signedIn
-        ? `SIGNED IN AS ${user.username.toUpperCase()} · ${user.id.slice(0, 6)}…`
-        : `PLAYING AS GUEST · ${user.username.toUpperCase()}`;
+      this.statusEl.textContent = user
+        ? signedIn
+          ? `SIGNED IN AS ${user.username.toUpperCase()} · ${user.id.slice(0, 6)}…`
+          : `PLAYING AS GUEST · ${user.username.toUpperCase()}`
+        : 'SIGN IN TO PLAY ONLINE';
     }
 
     if (this.onlineEl) {

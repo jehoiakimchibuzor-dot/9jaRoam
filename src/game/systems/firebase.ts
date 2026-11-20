@@ -31,6 +31,7 @@ export let createUserWithEmailAndPassword: any = null;
 export let signOut: any = null;
 export let signInWithPopup: any = null;
 export let GoogleAuthProvider: any = null;
+export let onAuthStateChanged: any = null;
 
 /* Re-exported Realtime Database functions */
 export let ref: any = null;
@@ -55,11 +56,19 @@ async function ensureFirebase(): Promise<void> {
     firebaseAuth = authMod.getAuth(firebaseApp);
     firebaseDb = dbMod.getDatabase(firebaseApp, firebaseConfig.databaseURL);
 
+    // Keep the signed-in account available after the app is killed and reopened.
+    try {
+      await authMod.setPersistence(firebaseAuth, authMod.browserLocalPersistence);
+    } catch {
+      // Local persistence is the web default; keep going if a WebView blocks it.
+    }
+
     signInWithEmailAndPassword = authMod.signInWithEmailAndPassword;
     createUserWithEmailAndPassword = authMod.createUserWithEmailAndPassword;
     signOut = authMod.signOut;
     signInWithPopup = authMod.signInWithPopup;
     GoogleAuthProvider = authMod.GoogleAuthProvider;
+    onAuthStateChanged = authMod.onAuthStateChanged;
 
     ref = dbMod.ref;
     set = dbMod.set;
@@ -89,6 +98,53 @@ export async function signInWithGoogle(): Promise<any> {
   await ensureFirebase();
   const provider = new GoogleAuthProvider();
   return signInWithPopup(firebaseAuth, provider);
+}
+
+/**
+ * Firebase auth restores from IndexedDB asynchronously after a cold start.
+ * The intro flow waits for that result so a saved account is not mistaken for
+ * a signed-out player (which would send them back to the auth screen).
+ */
+export async function waitForFirebaseUser(
+  timeoutMs = 3500
+): Promise<{ ready: boolean; user: any | null }> {
+  try {
+    await Promise.race([
+      ensureFirebase(),
+      new Promise<never>((_resolve, reject) => {
+        window.setTimeout(() => reject(new Error('Firebase auth init timeout')), timeoutMs);
+      })
+    ]);
+  } catch {
+    return { ready: false, user: null };
+  }
+
+  return new Promise((resolve) => {
+    let done = false;
+    let unsubscribe: (() => void) | null = null;
+    let timer: number | null = null;
+
+    const finish = (ready: boolean, user: any | null): void => {
+      if (done) return;
+      done = true;
+      if (timer !== null) window.clearTimeout(timer);
+      unsubscribe?.();
+      resolve({ ready, user });
+    };
+
+    try {
+      unsubscribe = onAuthStateChanged(
+        firebaseAuth,
+        (user: any) => finish(true, user),
+        () => finish(false, null)
+      );
+    } catch {
+      finish(false, null);
+      return;
+    }
+
+    timer = window.setTimeout(() => finish(false, null), timeoutMs);
+  });
 }
 
 export { firebaseConfig };

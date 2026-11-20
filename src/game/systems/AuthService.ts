@@ -4,6 +4,7 @@ import {
   signInWithEmailAndPassword,
   signOut,
   signInWithGoogle,
+  waitForFirebaseUser,
 } from './firebase';
 
 export interface UserStats {
@@ -31,6 +32,21 @@ export interface StoredAccount {
 
 const SESSION_KEY = '9ja_roam_session_v1';
 const ACCOUNTS_KEY = '9ja_roam_accounts_v1';
+const PERSONA_KEY = '9ja_roam_persona_seen';
+
+function isValidUserProfile(value: unknown): value is UserProfile {
+  if (!value || typeof value !== 'object') return false;
+  const user = value as Partial<UserProfile>;
+  return (
+    typeof user.id === 'string' && user.id.length > 0 &&
+    typeof user.username === 'string' &&
+    typeof user.isGuest === 'boolean' &&
+    typeof user.avatar === 'string' &&
+    (user.gender === 'male' || user.gender === 'female') &&
+    typeof user.occupation === 'string' &&
+    Boolean(user.stats)
+  );
+}
 
 export class AuthService {
   private static instance: AuthService;
@@ -51,7 +67,9 @@ export class AuthService {
     try {
       const raw = localStorage.getItem(SESSION_KEY);
       if (raw) {
-        this.currentUser = JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        this.currentUser = isValidUserProfile(parsed) ? parsed : null;
+        if (!this.currentUser) localStorage.removeItem(SESSION_KEY);
       }
     } catch {
       this.currentUser = null;
@@ -64,6 +82,52 @@ export class AuthService {
     } else {
       localStorage.removeItem(SESSION_KEY);
     }
+  }
+
+  /** Returns a saved account without creating a throwaway guest. */
+  getStoredUser(): UserProfile | null {
+    if (!this.currentUser) this.loadSession();
+    return this.currentUser && isValidUserProfile(this.currentUser) ? this.currentUser : null;
+  }
+
+  hasCompletedPersona(): boolean {
+    try {
+      return localStorage.getItem(PERSONA_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  }
+
+  markPersonaComplete(): void {
+    try {
+      localStorage.setItem(PERSONA_KEY, 'true');
+    } catch {
+      // Storage may be unavailable; the current session still continues.
+    }
+  }
+
+  /**
+   * Restore a cold-start session. Firebase auth comes back from IndexedDB
+   * asynchronously, so wait for it before trusting a saved email account.
+   */
+  async restoreSession(): Promise<UserProfile | null> {
+    const saved = this.getStoredUser();
+    if (!saved) return null;
+
+    this.currentUser = saved;
+    if (saved.isGuest) return saved;
+
+    const state = await waitForFirebaseUser(3500);
+    if (state.ready) {
+      const signedInUid = state.user?.uid;
+      if (typeof signedInUid !== 'string' || signedInUid !== saved.id) {
+        localStorage.removeItem(SESSION_KEY);
+        this.currentUser = null;
+        return null;
+      }
+    }
+
+    return saved;
   }
 
   private getAccounts(): Record<string, StoredAccount> {
