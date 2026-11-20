@@ -46,7 +46,6 @@ export class SettingsPanel {
     this.retryBtn = document.getElementById('settings-retry') as HTMLButtonElement | null;
     this.signOutBtn = document.getElementById('settings-signout') as HTMLButtonElement | null;
 
-    document.getElementById('settings-toggle')?.addEventListener('click', () => this.open());
     document.getElementById('settings-close')?.addEventListener('click', () => this.close());
 
     this.signInBtn?.addEventListener('click', () => {
@@ -77,7 +76,7 @@ export class SettingsPanel {
     this.refresh();
   }
 
-  private open(): void {
+  open(): void {
     if (!this.panel) return;
     this.wasPaused = this.options.isPaused();
     this.options.setPaused(true);

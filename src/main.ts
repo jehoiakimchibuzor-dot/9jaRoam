@@ -68,11 +68,13 @@ window.__roam = {
   portrait: window.innerHeight > window.innerWidth
 };
 
-new SettingsPanel({
+const settingsPanel = new SettingsPanel({
   onUserChanged: (user) => game.setUser(user),
   isPaused: () => game.isPaused,
   setPaused: (paused) => game.setMenuPaused(paused)
-}).attach();
+});
+settingsPanel.attach();
+game.setSettingsHandler(() => settingsPanel.open());
 
 async function tryLockLandscape(): Promise<void> {
   try {

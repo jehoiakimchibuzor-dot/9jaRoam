@@ -1025,6 +1025,11 @@ export class Game {
     this.setPaused(paused);
   }
 
+  /** Lets the pause card open account settings. */
+  setSettingsHandler(handler: () => void): void {
+    this.input.setSettingsHandler(handler);
+  }
+
   /** Freeze simulation while keeping the last frame on screen. */
   private setPaused(paused: boolean): void {
     if (this.paused === paused) return;

@@ -90,6 +90,9 @@ export class Input {
   /** Set by Game so the top-left pause button can freeze the world. */
   onPause?: (paused: boolean) => void;
 
+  /** Set by Game so the pause card can open account settings. */
+  onSettings?: () => void;
+
   private mode: ControlMode = 'foot';
   private keys = new Set<string>();
   private lookDX = 0;
@@ -245,7 +248,14 @@ export class Input {
       `<p class="help-sub">${subtitle}</p>` +
       `<div class="help-grid">${rows.join('')}</div>` +
       '<p class="help-desktop">KEYBOARD: WASD / arrows move · Shift sprint · Space jump or handbrake · ' +
-      'E enter or exit · F fire · R eject or reload</p>';
+      'E enter or exit · F fire · R eject or reload</p>' +
+      '<button id="btn-settings" class="help-settings" type="button">ACCOUNT &amp; SETTINGS</button>';
+
+    this.helpSheet.querySelector('#btn-settings')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.onSettings?.();
+    });
   }
 
   private bindWeaponButton(): void {
@@ -852,6 +862,10 @@ export class Input {
     this.renderPauseButton();
     this.pauseButton.classList.toggle('is-on', paused);
     this.updateHelpSheet();
+  }
+
+  setSettingsHandler(handler: () => void): void {
+    this.onSettings = handler;
   }
 
   consumeA(): boolean {
