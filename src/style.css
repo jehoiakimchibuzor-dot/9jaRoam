@@ -2260,6 +2260,229 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
 }
 
+.creator-launch {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  line-height: 1.2;
+}
+
+.creator-launch span {
+  color: rgba(220, 229, 222, 0.72);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+/* Full character studio: live 3D preview plus every creator control. */
+.creator-overlay {
+  z-index: 360;
+  padding: 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 22% 18%, rgba(231, 196, 119, 0.14), transparent 38%),
+    radial-gradient(circle at 82% 82%, rgba(23, 107, 74, 0.2), transparent 42%),
+    rgba(5, 9, 11, 0.96);
+}
+
+.creator-card {
+  display: flex;
+  flex-direction: column;
+  width: min(1040px, 96vw);
+  max-height: min(94vh, 860px);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 20px;
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 35%),
+    linear-gradient(160deg, rgba(18, 27, 30, 0.94), rgba(7, 11, 14, 0.94));
+  box-shadow:
+    0 34px 80px rgba(0, 0, 0, 0.66),
+    0 0 0 1px rgba(255, 255, 255, 0.035) inset,
+    0 1px 0 rgba(255, 255, 255, 0.12) inset;
+}
+
+.creator-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.creator-head h2 {
+  margin: 4px 0 3px;
+  color: #f4f1ea;
+  font-size: clamp(18px, 3vw, 26px);
+  letter-spacing: 0.06em;
+}
+
+.creator-head .auth-subtitle {
+  margin: 0;
+  font-size: 11px;
+}
+
+.creator-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.78fr) minmax(0, 1.22fr);
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
+  padding: 14px;
+}
+
+.creator-preview {
+  position: relative;
+  min-height: 340px;
+  overflow: hidden;
+  border: 1px solid rgba(231, 196, 119, 0.24);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 50% 34%, rgba(231, 196, 119, 0.17), transparent 43%),
+    linear-gradient(180deg, rgba(14, 23, 27, 0.92), rgba(6, 10, 13, 0.82));
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34), 0 1px 0 rgba(255, 255, 255, 0.1) inset;
+}
+
+.creator-preview::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px) 0 0 / 26px 26px,
+    linear-gradient(0deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px) 0 0 / 26px 26px;
+  mask-image: linear-gradient(to bottom, transparent, #000 35%, transparent 92%);
+  pointer-events: none;
+}
+
+.creator-preview canvas {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.creator-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  align-content: start;
+  min-height: 0;
+  padding: 2px 6px 8px 2px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(231, 196, 119, 0.35) transparent;
+  -webkit-overflow-scrolling: touch;
+}
+
+.creator-controls::-webkit-scrollbar {
+  width: 4px;
+}
+
+.creator-controls::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: rgba(231, 196, 119, 0.35);
+}
+
+.creator-group {
+  padding: 10px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.creator-group-title {
+  margin-bottom: 8px;
+  color: #e7c77d;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+}
+
+.creator-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.creator-choice {
+  flex: 1 1 auto;
+  min-width: 70px;
+  padding: 7px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #d7ded9;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.creator-choice:hover {
+  border-color: rgba(231, 196, 119, 0.46);
+  transform: translateY(-1px);
+}
+
+.creator-choice.is-selected {
+  border-color: rgba(231, 196, 119, 0.8);
+  background: linear-gradient(140deg, #f0d28a, #d4a12f);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.32);
+  color: #121811;
+}
+
+.creator-range {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.creator-range input {
+  flex: 1;
+  accent-color: #e7c77d;
+}
+
+.creator-range span {
+  min-width: 42px;
+  color: #f0d28a;
+  font-size: 10px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.creator-actions {
+  display: flex;
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+
+.creator-actions .flow-btn {
+  flex: 1;
+  margin-top: 0;
+}
+
+.creator-actions .flow-btn-full {
+  flex: 1.4;
+}
+
+body.creator-active #hud,
+body.creator-active #controls,
+body.creator-active #world-map,
+body.creator-active #dialog,
+body.creator-active #death,
+body.creator-active #damage-flash,
+body.creator-active #scene-fade,
+body.creator-active #rotate,
+body.creator-active .online-count {
+  display: none !important;
+}
+
+body.creator-active #app {
+  touch-action: pan-y;
+}
+
 .auth-header {
   text-align: center;
   margin-bottom: 16px;
@@ -3966,4 +4189,52 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
 
 #controls .stick-knob {
   background: radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.1) 65%);
+}
+
+/* Character studio keeps the live model visible in portrait while the controls
+   scroll underneath it. This matters on phones, where the creator is opened
+   before the landscape gameplay gate. */
+@media (max-width: 760px), (orientation: portrait) {
+  .creator-overlay {
+    padding: 8px;
+  }
+
+  .creator-card {
+    width: 100%;
+    max-height: 96vh;
+    border-radius: 16px;
+  }
+
+  .creator-head {
+    padding: 14px 14px 10px;
+  }
+
+  .creator-layout {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 10px;
+    overflow-y: auto;
+  }
+
+  .creator-preview {
+    height: 30vh;
+    min-height: 210px;
+    max-height: 310px;
+  }
+
+  .creator-controls {
+    grid-template-columns: 1fr;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .creator-actions {
+    padding: 0 10px 10px;
+  }
+
+  .creator-actions .flow-btn {
+    min-height: 40px;
+    padding: 9px;
+    font-size: 11px;
+  }
 }

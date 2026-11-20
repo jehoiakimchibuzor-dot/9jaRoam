@@ -2,6 +2,7 @@ import './style.css';
 import { Game } from './game/Game';
 import { IntroFlow } from './game/ui/IntroFlow';
 import { SettingsPanel } from './game/ui/SettingsPanel';
+import { getCharacterCreator } from './game/ui/CharacterCreator';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const params = new URLSearchParams(window.location.search);
@@ -18,6 +19,7 @@ const game = new Game(canvas, {
 let gameStarted = false;
 const rotateEl = document.getElementById('rotate');
 const rotateContinue = document.getElementById('rotate-continue');
+const characterCreator = getCharacterCreator();
 
 // While the account screens are open the page must allow vertical scrolling;
 // gameplay itself keeps touch-action disabled for the joystick controls.
@@ -31,7 +33,7 @@ function updateRotatePrompt(): void {
   const portrait = isPortrait();
   if (window.__roam) window.__roam.portrait = portrait;
   if (!rotateEl) return;
-  const show = gameStarted && portrait;
+  const show = gameStarted && portrait && !characterCreator.isOpen;
   rotateEl.classList.toggle('is-hidden', !show);
   rotateEl.setAttribute('aria-hidden', show ? 'false' : 'true');
   document.body.classList.toggle('rotate-prompted', show);
@@ -39,6 +41,7 @@ function updateRotatePrompt(): void {
 
 window.addEventListener('resize', updateRotatePrompt);
 window.addEventListener('orientationchange', updateRotatePrompt);
+document.addEventListener('creator-statechange', updateRotatePrompt);
 rotateContinue?.addEventListener('click', () => requestGameFullscreen());
 updateRotatePrompt();
 
@@ -183,7 +186,7 @@ function requestGameFullscreen(): void {
 // Taps on the portrait sign-in screens must not rotate the phone away.
 // Retry on later taps if the browser refused the first request.
 window.addEventListener('pointerdown', () => {
-  if (gameStarted && !settingsPanel.isOpen()) requestGameFullscreen();
+  if (gameStarted && !settingsPanel.isOpen() && !characterCreator.isOpen) requestGameFullscreen();
 }, { capture: true });
 
 interface BeforeInstallPromptEvent extends Event {

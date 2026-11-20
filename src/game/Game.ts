@@ -4,11 +4,8 @@ import { Player } from './entities/Player';
 import {
   appearanceFromProfile,
   DEFAULT_PLAYER_APPEARANCE,
-  SHIRT_COLORS,
-  SHOE_COLORS,
-  SKIN_TONES,
-  TROUSER_COLORS,
   isPlayerAppearance,
+  normalizePlayerAppearance,
   type PlayerAppearance
 } from './entities/PlayerAppearance';
 import {
@@ -73,8 +70,9 @@ import { createHealth, damageHealth, healHealth, Health, restoreHealth } from '.
 import { clamp, pushOutColliders, rayWallDistance } from './systems/Physics';
 import { GameAudio } from './systems/GameAudio';
 import { MultiplayerService, type RemotePlayerState } from './systems/MultiplayerService';
-import type { UserProfile } from './systems/AuthService';
+import { AuthService, type UserProfile } from './systems/AuthService';
 import { RemotePlayers } from './entities/RemotePlayers';
+import { getCharacterCreator } from './ui/CharacterCreator';
 import { IS_ANDROID } from './platform';
 
 type Mode = 'foot' | 'drive' | 'entering' | 'exiting' | 'falling';
@@ -988,10 +986,22 @@ export class Game {
   setUser(user: UserProfile): void {
     this.user = user;
 
-    // The persona choices are real look settings now, not just profile tags.
-    // A look edited later in Yemi's Style Corner stays untouched.
-    if (!this.appearanceCustomized) {
-      const profileLook = appearanceFromProfile(user.avatar, user.gender, user.occupation);
+    // A full creator look saved on the account wins over the quick persona
+    // preset. Progress saves still win when they carry a customised look, so a
+    // player never loses an in-game edit on relaunch.
+    const accountLook = user.appearanceCustomized && user.appearance
+      ? normalizePlayerAppearance(user.appearance)
+      : null;
+    if (accountLook) {
+      this.appearanceCustomized = true;
+      if (JSON.stringify(this.player.appearance) !== JSON.stringify(accountLook)) {
+        this.player.setAppearance(accountLook);
+        this.saveProgress();
+      }
+    } else if (!this.appearanceCustomized) {
+      const profileLook = normalizePlayerAppearance(
+        appearanceFromProfile(user.avatar, user.gender, user.occupation)
+      );
       if (JSON.stringify(this.player.appearance) !== JSON.stringify(profileLook)) {
         this.player.setAppearance(profileLook);
         this.saveProgress();
@@ -3416,117 +3426,22 @@ export class Game {
   }
 
   private openPlayerWardrobe(): void {
-    const appearance = this.player.appearance;
-    this.showDialogue('Yemi\'s Style Corner', 'Build your look. Changes are saved automatically.', [
-      {
-        label: `BODY TYPE · ${appearance.bodyType.toUpperCase()}`,
-        action: () =>
-          this.openAppearanceChoice('Body type', 'bodyType', [
-            { label: 'Average', value: 'average' },
-            { label: 'Athletic', value: 'athletic' },
-            { label: 'Muscular', value: 'muscular' },
-            { label: 'Heavier build', value: 'heavy' }
-          ])
-      },
-      {
-        label: `OUTFIT · ${appearance.outfit.toUpperCase().replace('-', ' ')}`,
-        action: () =>
-          this.openAppearanceChoice('Outfit', 'outfit', [
-            { label: 'Graphic street tee', value: 'graphic-tee' },
-            { label: 'Fitted Senator wear', value: 'senator' },
-            { label: 'Short-sleeve kaftan', value: 'kaftan' },
-            { label: 'Agbero reflective vest', value: 'agbero-vest' }
-          ])
-      },
-      {
-        label: 'SHIRT COLOUR',
-        action: () => this.openAppearanceChoice('Shirt colour', 'shirtColor', SHIRT_COLORS)
-      },
-      {
-        label: `TROUSERS · ${appearance.bottoms.toUpperCase()}`,
-        action: () =>
-          this.openAppearanceChoice('Trousers', 'bottoms', [
-            { label: 'Long trousers', value: 'long' },
-            { label: 'Shorts', value: 'shorts' }
-          ])
-      },
-      {
-        label: 'TROUSER COLOUR',
-        action: () => this.openAppearanceChoice('Trouser colour', 'pantsColor', TROUSER_COLORS)
-      },
-      {
-        label: `FOOTWEAR · ${appearance.footwear.toUpperCase()}`,
-        action: () =>
-          this.openAppearanceChoice('Footwear', 'footwear', [
-            { label: 'Sneakers', value: 'sneakers' },
-            { label: 'Slides', value: 'slides' }
-          ])
-      },
-      {
-        label: 'SHOE COLOUR',
-        action: () => this.openAppearanceChoice('Shoe colour', 'shoesColor', SHOE_COLORS)
-      },
-      {
-        label: 'SKIN TONE',
-        action: () => this.openAppearanceChoice('Skin tone', 'skinTone', SKIN_TONES)
-      },
-      {
-        label: `HEADWEAR · ${appearance.headwear.toUpperCase().replace('-', ' ')}`,
-        action: () =>
-          this.openAppearanceChoice('Headwear', 'headwear', [
-            { label: 'No hat', value: 'none' },
-            { label: 'Snapback', value: 'snapback' },
-            { label: 'Northern embroidered cap', value: 'northern-cap' },
-            { label: 'Headwrap', value: 'headwrap' }
-          ])
-      },
-      {
-        label: `HAIRSTYLE · ${appearance.hairStyle.toUpperCase()}`,
-        action: () =>
-          this.openAppearanceChoice('Hairstyle', 'hairStyle', [
-            { label: 'Low fade', value: 'fade' },
-            { label: 'Afro', value: 'afro' },
-            { label: 'Braids', value: 'braids' },
-            { label: 'Bald', value: 'bald' }
-          ])
-      },
-      {
-        label: `FACIAL HAIR · ${appearance.facialHair.toUpperCase()}`,
-        action: () =>
-          this.openAppearanceChoice('Facial hair', 'facialHair', [
-            { label: 'Clean shaven', value: 'clean' },
-            { label: 'Stubble', value: 'stubble' },
-            { label: 'Trimmed beard', value: 'beard' }
-          ])
-      },
-      {
-        label: `EYEWEAR · ${appearance.glasses ? 'ON' : 'OFF'}`,
-        action: () =>
-          this.openAppearanceChoice('Eyewear', 'glasses', [
-            { label: 'No glasses', value: false },
-            { label: 'Glasses', value: true }
-          ])
-      },
-      { label: 'DONE', action: () => this.closeDialogue() }
-    ]);
-  }
-
-  private openAppearanceChoice<K extends keyof PlayerAppearance>(
-    title: string,
-    field: K,
-    choices: ReadonlyArray<{ label: string; value: PlayerAppearance[K] }>
-  ): void {
-    const options: DialogueOption[] = choices.map((choice) => ({
-      label: `${this.player.appearance[field] === choice.value ? '✓ ' : ''}${choice.label}`,
-      action: () => {
-        this.player.setAppearance({ ...this.player.appearance, [field]: choice.value });
+    this.closeDialogue();
+    const creator = getCharacterCreator();
+    this.setMenuPaused(true);
+    creator.open(
+      this.player.appearance,
+      (look) => {
+        this.player.setAppearance(look);
         this.appearanceCustomized = true;
         this.saveProgress();
-        this.openPlayerWardrobe();
-      }
-    }));
-    options.push({ label: 'BACK TO WARDROBE', action: () => this.openPlayerWardrobe() });
-    this.showDialogue(title, 'Choose an option for your character.', options);
+        AuthService.getInstance().updateAppearance(look);
+        this.showToast('CHARACTER LOOK SAVED');
+        this.setHint('YEMI SAVED YOUR NEW LOOK · it travels with your account');
+        this.setMenuPaused(false);
+      },
+      () => this.setMenuPaused(false)
+    );
   }
 
   private openLapoOffice(point: InteriorPointDef): void {

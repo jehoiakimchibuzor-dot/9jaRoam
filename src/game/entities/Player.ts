@@ -3,7 +3,9 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { CharacterRig, HumanoidAnimator, createCharacter } from './CharacterModel';
 import {
   copyPlayerAppearance,
+  DEFAULT_CHARACTER_FEATURES,
   DEFAULT_PLAYER_APPEARANCE,
+  normalizePlayerAppearance,
   type PlayerAppearance
 } from './PlayerAppearance';
 import type { WeaponId } from '../combat/Weapons';
@@ -16,40 +18,51 @@ export interface PlayerMoveInput {
 
 /** Shared by the in-game player and the persona-screen live preview. */
 export function createPlayerCharacter(appearance: PlayerAppearance): CharacterRig {
-  const northernCap = appearance.headwear === 'northern-cap';
-  const headwrap = appearance.headwear === 'headwrap';
-  const reflectiveVest = appearance.outfit === 'agbero-vest';
+  const look = normalizePlayerAppearance(appearance);
+  const features = look.features ?? DEFAULT_CHARACTER_FEATURES;
+  const northernCap = look.headwear === 'northern-cap';
+  const headwrap = look.headwear === 'headwrap';
+  const reflectiveVest = look.outfit === 'agbero-vest';
   return createCharacter(
     {
-      skin: appearance.skinTone,
-      shirt: appearance.shirtColor,
-      pants: appearance.pantsColor,
-      shoes: appearance.shoesColor,
+      skin: look.skinTone,
+      shirt: look.shirtColor,
+      pants: look.pantsColor,
+      shoes: look.shoesColor,
       accent: 0xf2f0e6,
-      hair: 0x14100d,
-      chain: 0xd9b44a
+      hair: features.hairColor,
+      chain: features.accentColor
     },
-    1.82,
+    1.82 * features.heightScale,
     {
       build: 1.02,
-      bodyType: appearance.bodyType,
-      outfit: appearance.outfit,
-      footwear: appearance.footwear,
-      sleeves: appearance.outfit === 'senator' ? 'long' : 'short',
-      bottoms: appearance.bottoms,
-      hairStyle: appearance.hairStyle,
-      cap: appearance.headwear === 'snapback' || northernCap,
+      bodyType: look.bodyType,
+      outfit: look.outfit,
+      footwear: look.footwear,
+      sleeves: look.outfit === 'senator' ? 'long' : 'short',
+      bottoms: look.bottoms,
+      hairStyle: look.hairStyle,
+      cap: look.headwear === 'snapback' || northernCap,
       capStyle: northernCap ? 'northern' : 'snapback',
-      capColor: northernCap ? 0xe5dfcf : 0x145b40,
+      capColor: northernCap ? 0xe5dfcf : features.accentColor,
+      capBackwards: features.capBackwards,
       headwrap,
-      headwrapColor: 0xd4a12f,
-      beard: appearance.facialHair === 'beard',
-      stubble: appearance.facialHair === 'stubble',
-      glasses: appearance.glasses,
+      headwrapColor: features.accentColor,
+      beard: look.facialHair === 'beard',
+      stubble: look.facialHair === 'stubble',
+      glasses: look.glasses,
+      earring: features.earring,
       vest: reflectiveVest,
       reflectiveVest,
       vestColor: 0xd7d33c,
-      print: appearance.outfit === 'graphic-tee' ? 0x202126 : undefined
+      hairColor: features.hairColor,
+      accentColor: features.accentColor,
+      faceShape: features.faceShape,
+      eyeShape: features.eyeShape,
+      browStyle: features.browStyle,
+      noseShape: features.noseShape,
+      shoulderScale: features.shoulderScale,
+      print: look.outfit === 'graphic-tee' ? 0x202126 : undefined
     }
   );
 }
@@ -102,23 +115,8 @@ export class Player {
 
 
   setAppearance(appearance: PlayerAppearance): void {
-    const current = this.appearance;
-    if (
-      current.bodyType === appearance.bodyType &&
-      current.outfit === appearance.outfit &&
-      current.shirtColor === appearance.shirtColor &&
-      current.pantsColor === appearance.pantsColor &&
-      current.bottoms === appearance.bottoms &&
-      current.footwear === appearance.footwear &&
-      current.shoesColor === appearance.shoesColor &&
-      current.skinTone === appearance.skinTone &&
-      current.headwear === appearance.headwear &&
-      current.hairStyle === appearance.hairStyle &&
-      current.facialHair === appearance.facialHair &&
-      current.glasses === appearance.glasses
-    ) {
-      return;
-    }
+    const next = normalizePlayerAppearance(appearance);
+    if (JSON.stringify(this.appearance) === JSON.stringify(next)) return;
 
     const previousRig = this.rig;
     this.gun.removeFromParent();
@@ -128,7 +126,7 @@ export class Player {
       if (object instanceof THREE.Mesh) object.geometry.dispose();
     });
 
-    this.appearance = copyPlayerAppearance(appearance);
+    this.appearance = next;
     this.rig = this.createRig(this.appearance);
     this.group.add(this.rig.group);
     this.rig.rightElbow.add(this.gun, this.machete);

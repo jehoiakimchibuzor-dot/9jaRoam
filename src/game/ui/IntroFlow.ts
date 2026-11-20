@@ -1,5 +1,11 @@
 import { AuthService, UserProfile } from '../systems/AuthService';
+import {
+  appearanceFromProfile,
+  normalizePlayerAppearance,
+  type PlayerAppearance
+} from '../entities/PlayerAppearance';
 import { CharacterPreview } from './CharacterPreview';
+import { getCharacterCreator } from './CharacterCreator';
 
 export class IntroFlow {
   private authService = AuthService.getInstance();
@@ -11,6 +17,7 @@ export class IntroFlow {
   private selectedGender: 'male' | 'female' = 'male';
   private selectedOccupation = 'Hustler';
   private characterPreview: CharacterPreview | null = null;
+  private customAppearance: PlayerAppearance | null = null;
   private restoredUserPromise: Promise<UserProfile | null> | null = null;
   private currentSlideIndex = 0;
 
@@ -300,6 +307,10 @@ export class IntroFlow {
   }
 
   private refreshCharacterPreview(): void {
+    if (this.customAppearance) {
+      this.characterPreview?.setAppearance(this.customAppearance);
+      return;
+    }
     this.characterPreview?.setProfile(
       this.selectedAvatar,
       this.selectedGender,
@@ -311,6 +322,9 @@ export class IntroFlow {
     this.selectedAvatar = user.avatar || 'street-rebel';
     this.selectedGender = user.gender;
     this.selectedOccupation = user.occupation;
+    this.customAppearance = user.appearanceCustomized && user.appearance
+      ? normalizePlayerAppearance(user.appearance)
+      : null;
 
     const avatarOptions = document.querySelectorAll('.avatar-option[data-avatar]');
     avatarOptions.forEach((opt) => {
@@ -327,6 +341,7 @@ export class IntroFlow {
         opt.classList.add('is-selected');
         opt.setAttribute('aria-pressed', 'true');
         this.selectedAvatar = avatar ?? 'street-rebel';
+        this.customAppearance = null;
         this.refreshCharacterPreview();
       });
     });
@@ -343,6 +358,7 @@ export class IntroFlow {
         genderOptions.forEach((o) => o.classList.remove('is-selected'));
         opt.classList.add('is-selected');
         this.selectedGender = (gender as 'male' | 'female');
+        this.customAppearance = null;
         this.refreshCharacterPreview();
       });
     });
@@ -359,28 +375,54 @@ export class IntroFlow {
         occOptions.forEach((o) => o.classList.remove('is-selected'));
         opt.classList.add('is-selected');
         this.selectedOccupation = occ ?? 'Hustler';
+        this.customAppearance = null;
         this.refreshCharacterPreview();
       });
     });
 
     const btnCreate = document.getElementById('btn-create-character');
+    const btnCreator = document.getElementById('btn-persona-creator');
     const charErrorEl = document.getElementById('char-error-msg');
 
     const clearError = () => {
       if (charErrorEl) charErrorEl.style.display = 'none';
     };
 
+    // The deep creator borrows the same canvas renderer as the persona card.
+    // Pause this small turntable while the full-screen studio owns a preview.
+    btnCreator?.addEventListener('click', () => {
+      const baseLook = this.customAppearance ?? appearanceFromProfile(
+        this.selectedAvatar,
+        this.selectedGender,
+        this.selectedOccupation
+      );
+      const preview = this.characterPreview;
+      preview?.stop();
+      getCharacterCreator().open(
+        baseLook,
+        (look) => {
+          this.customAppearance = look;
+          this.refreshCharacterPreview();
+        },
+        () => {
+          preview?.start();
+          this.refreshCharacterPreview();
+        }
+      );
+    });
+
     btnCreate?.addEventListener('click', () => {
       clearError();
       this.authService.markPersonaComplete();
 
-      const updatedUser = this.authService.updateCharacter({
+      this.authService.updateCharacter({
         avatar: this.selectedAvatar,
         gender: this.selectedGender,
         occupation: this.selectedOccupation,
       });
+      const finalUser = this.authService.updateAppearance(this.customAppearance ?? undefined);
 
-      this.complete(updatedUser);
+      this.complete(finalUser);
     });
   }
 

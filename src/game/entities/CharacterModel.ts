@@ -48,6 +48,14 @@ export interface CharacterStyle {
   beard?: boolean;
   stubble?: boolean;
   earring?: boolean;
+  /** Deep character-creator details. All optional for existing NPCs. */
+  hairColor?: number;
+  accentColor?: number;
+  faceShape?: 'oval' | 'round' | 'square' | 'long';
+  eyeShape?: 'standard' | 'wide' | 'narrow' | 'sharp';
+  browStyle?: 'soft' | 'straight' | 'angled' | 'thick';
+  noseShape?: 'small' | 'straight' | 'wide' | 'hooked';
+  shoulderScale?: number;
   /** Flat chest print, the kind of graphic tee you see all over the street. */
   print?: number;
 }
@@ -230,8 +238,8 @@ export function createCharacter(
   const skin = colors.skin;
   const shirt = colors.shirt;
   const pants = colors.pants;
-  const accent = colors.accent ?? 0xeeeeea;
-  const hair = colors.hair ?? 0x15110d;
+  const accent = style.accentColor ?? colors.accent ?? 0xeeeeea;
+  const hair = style.hairColor ?? colors.hair ?? 0x15110d;
   const shoe = colors.shoes;
   const build = style.build ?? 1;
   const bodyType = style.bodyType ?? 'athletic';
@@ -248,7 +256,9 @@ export function createCharacter(
     bodyType === 'muscular' ? 1.28 : bodyType === 'heavy' ? 1.14 : bodyType === 'athletic' ? 1.12 : 1.06;
   const torsoDepth =
     bodyType === 'muscular' ? 0.78 : bodyType === 'heavy' ? 0.76 : bodyType === 'athletic' ? 0.73 : 0.7;
-  const shoulderSpan = bodyType === 'muscular' ? 1.2 : bodyType === 'heavy' ? 1.1 : 1;
+  const shoulderSpan =
+    (bodyType === 'muscular' ? 1.2 : bodyType === 'heavy' ? 1.1 : 1) *
+    (style.shoulderScale ?? 1);
   const longTunic = outfit === 'senator' || outfit === 'kaftan';
   const tee = outfit === 'graphic-tee' || outfit === 'agbero-vest';
 
@@ -489,33 +499,49 @@ export function createCharacter(
 
   // Clean skull and jaw volumes. Detail comes from features rather than from
   // extra lumps that read as tumours in profile.
-  sphere(head, 0.108, skin, 0, 0.138, 0.006, 1.0, 1.06, 1.0, 16);
-  sphere(head, 0.086, skin, 0, 0.078, 0.008, 0.98, 0.75, 0.9, 14);
+  const face = style.faceShape ?? 'oval';
+  const faceShape =
+    face === 'round'
+      ? { sx: 1.08, sy: 0.95, sz: 1.05, jawX: 1.08, jawY: 0.84, jawZ: 0.98 }
+      : face === 'square'
+        ? { sx: 1.1, sy: 1.0, sz: 0.97, jawX: 1.13, jawY: 0.86, jawZ: 0.97 }
+        : face === 'long'
+          ? { sx: 0.95, sy: 1.11, sz: 0.98, jawX: 0.9, jawY: 0.78, jawZ: 0.9 }
+          : { sx: 1, sy: 1.06, sz: 1, jawX: 0.98, jawY: 0.75, jawZ: 0.9 };
+  sphere(head, 0.108, skin, 0, 0.138, 0.006, faceShape.sx, faceShape.sy, faceShape.sz, 16);
+  sphere(head, 0.086, skin, 0, 0.078, 0.008, faceShape.jawX, faceShape.jawY, faceShape.jawZ, 14);
   sphere(head, 0.032, skin, 0, 0.05, 0.052, 1.2, 0.7, 0.9, 10);
   for (const side of [-1, 1]) {
     // Ears sit behind the cheek line and are mostly flat.
-    sphere(head, 0.03, skin, side * 0.106, 0.132, -0.008, 0.45, 1, 0.82, 8);
-    sphere(head, 0.015, skinShade, side * 0.109, 0.131, -0.002, 0.4, 0.95, 0.62, 6);
+    sphere(head, 0.03, skin, side * 0.106 * faceShape.sx, 0.132, -0.008, 0.45, 1, 0.82, 8);
+    sphere(head, 0.015, skinShade, side * 0.109 * faceShape.sx, 0.131, -0.002, 0.4, 0.95, 0.62, 6);
   }
 
   // Brows sit on a shallow ridge, thin enough not to look painted on.
+  const browStyle = style.browStyle ?? 'soft';
+  const browHeight = browStyle === 'thick' ? 0.02 : browStyle === 'soft' ? 0.008 : 0.013;
+  const browTilt = browStyle === 'angled' ? 0.28 : browStyle === 'straight' ? 0 : 0.13;
   for (const side of [-1, 1]) {
-    const brow = block(head, 0.05, 0.012, 0.016, 0.004, hair, side * 0.044, 0.177, 0.099, 1);
-    brow.rotation.z = side * 0.13;
+    const brow = block(head, 0.05, browHeight, 0.016, 0.004, hair, side * 0.044, 0.177, 0.099, 1);
+    brow.rotation.z = side * browTilt;
     brow.rotation.y = side * -0.1;
   }
 
   // Eyes: sclera, iris, pupil, catchlight, lids. They sit proud of the face so
   // the whites actually catch the light instead of sinking into the skull.
+  const eyeShape = style.eyeShape ?? 'standard';
+  const eyeWidth = eyeShape === 'wide' ? 1.25 : eyeShape === 'sharp' ? 1.3 : eyeShape === 'narrow' ? 1.04 : 1.1;
+  const eyeHeight = eyeShape === 'wide' ? 0.95 : eyeShape === 'sharp' ? 0.66 : eyeShape === 'narrow' ? 0.58 : 0.78;
+  const eyeSpacing = eyeShape === 'wide' ? 0.047 : eyeShape === 'sharp' ? 0.045 : 0.043;
   const eyeY = 0.149;
   for (const side of [-1, 1]) {
-    const ex = side * 0.043;
-    sphere(head, 0.016, 0xece4d6, ex, eyeY, 0.1, 1.1, 0.78, 0.55, 8);
-    sphere(head, 0.0092, 0x3a2418, ex, eyeY, 0.106, 1, 1, 0.5, 6);
+    const ex = side * eyeSpacing;
+    sphere(head, 0.016, 0xece4d6, ex, eyeY, 0.1, eyeWidth, eyeHeight, 0.55, 8);
+    sphere(head, 0.0092, 0x3a2418, ex, eyeY, 0.106, 1, eyeHeight / 0.78, 0.5, 6);
     sphere(head, 0.0044, 0x100c08, ex, eyeY, 0.1095, 1, 1, 0.55, 6);
     sphere(head, 0.0022, 0xf8f4e8, ex + side * 0.0035, eyeY + 0.0045, 0.1108, 1, 1, 0.6, 4);
     const lid = block(head, 0.05, 0.014, 0.016, 0.004, skin, ex, eyeY + 0.01, 0.105, 1);
-    lid.rotation.z = side * 0.09;
+    lid.rotation.z = side * (eyeShape === 'sharp' ? 0.2 : 0.09);
     block(head, 0.042, 0.009, 0.013, 0.003, skinShade, ex, eyeY - 0.011, 0.105, 1);
   }
 
@@ -528,8 +554,12 @@ export function createCharacter(
   }
 
   // Nose: one tapered volume plus the ball of the tip.
-  sphere(head, 0.022, skin, 0, 0.112, 0.101, 0.55, 1.55, 0.85, 10);
-  sphere(head, 0.0165, skin, 0, 0.093, 0.108, 1.2, 0.9, 0.95, 8);
+  const noseShape = style.noseShape ?? 'straight';
+  const noseWidth = noseShape === 'wide' ? 0.78 : noseShape === 'small' ? 0.42 : 0.55;
+  const noseLength = noseShape === 'small' ? 1.2 : 1.55;
+  const noseTip = noseShape === 'wide' ? 1.42 : noseShape === 'small' ? 0.85 : 1.2;
+  sphere(head, 0.022, skin, 0, 0.112, 0.101, noseWidth, noseLength, 0.85, 10);
+  sphere(head, 0.0165, skin, 0, 0.093, 0.108, noseTip, 0.9, 0.95, 8);
   for (const side of [-1, 1]) {
     sphere(head, 0.005, 0x4a2c1c, side * 0.011, 0.09, 0.111, 1, 0.8, 0.5, 4);
   }
@@ -556,8 +586,8 @@ export function createCharacter(
     sphere(head, 0.086, tint(hair, 0.9), 0, 0.06, 0.014, 0.96, 0.72, 0.92, 10);
   }
 
-  if (style.earring || colors.chain !== undefined) {
-    sphere(head, 0.007, colors.chain ?? 0xd9b44a, 0.11, 0.105, -0.004, 1, 1, 0.7, 6);
+  if (style.earring === true) {
+    sphere(head, 0.007, style.accentColor ?? colors.chain ?? 0xd9b44a, 0.11, 0.105, -0.004, 1, 1, 0.7, 6);
   }
 
   // -------------------------------------------------------------------- hair

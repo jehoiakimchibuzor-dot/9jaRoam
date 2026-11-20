@@ -6,6 +6,7 @@ import {
   signInWithGoogle,
   waitForFirebaseUser,
 } from './firebase';
+import type { PlayerAppearance } from '../entities/PlayerAppearance';
 
 export interface UserStats {
   cash: number;
@@ -23,6 +24,9 @@ export interface UserProfile {
   occupation: string;
   joinedAt: string;
   stats: UserStats;
+  /** Advanced character creator look; keeps the full build across relaunches. */
+  appearance?: PlayerAppearance;
+  appearanceCustomized?: boolean;
 }
 
 export interface StoredAccount {
@@ -378,6 +382,30 @@ export class AuthService {
     }
 
     this.currentUser = { ...this.currentUser, ...updates };
+    this.saveSession();
+
+    if (!this.currentUser.isGuest) {
+      const accounts = this.getAccounts();
+      const key = this.currentUser.username.toLowerCase();
+      if (accounts[key]) {
+        accounts[key].user = this.currentUser;
+        this.saveAccounts(accounts);
+      }
+    }
+
+    return this.currentUser;
+  }
+
+  updateAppearance(appearance?: PlayerAppearance): UserProfile {
+    if (!this.currentUser) {
+      this.currentUser = this.createDefaultGuest('Guest Roamer', 'street-rebel');
+    }
+
+    this.currentUser = {
+      ...this.currentUser,
+      appearance,
+      appearanceCustomized: Boolean(appearance)
+    };
     this.saveSession();
 
     if (!this.currentUser.isGuest) {

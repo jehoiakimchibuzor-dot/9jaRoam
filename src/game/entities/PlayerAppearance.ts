@@ -5,6 +5,24 @@ export type PlayerBottoms = 'long' | 'shorts';
 export type PlayerHeadwear = 'none' | 'snapback' | 'northern-cap' | 'headwrap';
 export type PlayerFacialHair = 'clean' | 'stubble' | 'beard';
 export type PlayerHairStyle = 'fade' | 'afro' | 'bald' | 'braids';
+export type FaceShape = 'oval' | 'round' | 'square' | 'long';
+export type EyeShape = 'standard' | 'wide' | 'narrow' | 'sharp';
+export type BrowStyle = 'soft' | 'straight' | 'angled' | 'thick';
+export type NoseShape = 'small' | 'straight' | 'wide' | 'hooked';
+
+/** Fine details that turn the preset wardrobe into a real character creator. */
+export interface CharacterFeatures {
+  faceShape: FaceShape;
+  eyeShape: EyeShape;
+  browStyle: BrowStyle;
+  noseShape: NoseShape;
+  hairColor: number;
+  accentColor: number;
+  earring: boolean;
+  capBackwards: boolean;
+  heightScale: number;
+  shoulderScale: number;
+}
 
 export interface PlayerAppearance {
   bodyType: PlayerBodyType;
@@ -19,7 +37,40 @@ export interface PlayerAppearance {
   hairStyle: PlayerHairStyle;
   facialHair: PlayerFacialHair;
   glasses: boolean;
+  /** Optional so old saves stay valid; always filled in when loaded. */
+  features?: CharacterFeatures;
 }
+
+export const DEFAULT_CHARACTER_FEATURES: CharacterFeatures = {
+  faceShape: 'oval',
+  eyeShape: 'standard',
+  browStyle: 'soft',
+  noseShape: 'straight',
+  hairColor: 0x14100d,
+  accentColor: 0xd9b44a,
+  earring: false,
+  capBackwards: false,
+  heightScale: 1,
+  shoulderScale: 1
+};
+
+export const HAIR_COLORS = [
+  { label: 'Jet black', value: 0x14100d },
+  { label: 'Dark brown', value: 0x3a2418 },
+  { label: 'Chestnut', value: 0x6b3f22 },
+  { label: 'Ankara blonde', value: 0xb8863a },
+  { label: 'Burgundy', value: 0x6d2130 },
+  { label: 'Silver grey', value: 0x9ea3a8 }
+] as const;
+
+export const ACCENT_COLORS = [
+  { label: 'Gold', value: 0xd9b44a },
+  { label: 'Silver', value: 0xc9ced4 },
+  { label: 'Emerald', value: 0x176b4a },
+  { label: 'Indigo', value: 0x285c9a },
+  { label: 'Oxblood', value: 0x8c2935 },
+  { label: 'Ankara gold', value: 0xd4a12f }
+] as const;
 
 export const DEFAULT_PLAYER_APPEARANCE: PlayerAppearance = {
   bodyType: 'muscular',
@@ -33,7 +84,8 @@ export const DEFAULT_PLAYER_APPEARANCE: PlayerAppearance = {
   headwear: 'snapback',
   hairStyle: 'fade',
   facialHair: 'beard',
-  glasses: false
+  glasses: false,
+  features: { ...DEFAULT_CHARACTER_FEATURES }
 };
 
 export const SHIRT_COLORS = [
@@ -186,6 +238,30 @@ export function appearanceFromProfile(
   }
 
   if (gender === 'female' && look.headwear === 'none') look.headwear = 'headwrap';
+
+  const features: CharacterFeatures = { ...DEFAULT_CHARACTER_FEATURES };
+  if (avatar === 'city-boss') {
+    features.faceShape = 'square';
+    features.browStyle = 'thick';
+    features.earring = true;
+  } else if (avatar === 'kano-maverick') {
+    features.faceShape = 'long';
+    features.browStyle = 'angled';
+    features.accentColor = 0xd4a12f;
+  } else if (avatar === 'hustler-pro') {
+    features.faceShape = 'round';
+    features.eyeShape = 'wide';
+  }
+  if (gender === 'female') {
+    features.faceShape = 'oval';
+    features.eyeShape = 'wide';
+    features.browStyle = 'soft';
+    features.noseShape = 'small';
+    features.shoulderScale = 0.94;
+  }
+  if (occupation === 'Police') features.shoulderScale = 1.04;
+  if (occupation === 'Thief') features.eyeShape = 'sharp';
+  look.features = features;
   return look;
 }
 
@@ -196,6 +272,10 @@ const BOTTOMS: readonly PlayerBottoms[] = ['long', 'shorts'];
 const HEADWEAR: readonly PlayerHeadwear[] = ['none', 'snapback', 'northern-cap', 'headwrap'];
 const HAIR_STYLES: readonly PlayerHairStyle[] = ['fade', 'afro', 'bald', 'braids'];
 const FACIAL_HAIR: readonly PlayerFacialHair[] = ['clean', 'stubble', 'beard'];
+const FACE_SHAPES: readonly FaceShape[] = ['oval', 'round', 'square', 'long'];
+const EYE_SHAPES: readonly EyeShape[] = ['standard', 'wide', 'narrow', 'sharp'];
+const BROW_STYLES: readonly BrowStyle[] = ['soft', 'straight', 'angled', 'thick'];
+const NOSE_SHAPES: readonly NoseShape[] = ['small', 'straight', 'wide', 'hooked'];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -209,9 +289,25 @@ function hasColor(values: ReadonlyArray<{ value: number }>, value: unknown): val
   return typeof value === 'number' && values.some((entry) => entry.value === value);
 }
 
-export function isPlayerAppearance(value: unknown): value is PlayerAppearance {
+export function isCharacterFeatures(value: unknown): value is CharacterFeatures {
   if (!isRecord(value)) return false;
   return (
+    hasValue(FACE_SHAPES, value.faceShape) &&
+    hasValue(EYE_SHAPES, value.eyeShape) &&
+    hasValue(BROW_STYLES, value.browStyle) &&
+    hasValue(NOSE_SHAPES, value.noseShape) &&
+    hasColor(HAIR_COLORS, value.hairColor) &&
+    hasColor(ACCENT_COLORS, value.accentColor) &&
+    typeof value.earring === 'boolean' &&
+    typeof value.capBackwards === 'boolean' &&
+    typeof value.heightScale === 'number' && value.heightScale >= 0.9 && value.heightScale <= 1.1 &&
+    typeof value.shoulderScale === 'number' && value.shoulderScale >= 0.9 && value.shoulderScale <= 1.1
+  );
+}
+
+export function isPlayerAppearance(value: unknown): value is PlayerAppearance {
+  if (!isRecord(value)) return false;
+  const baseValid =
     hasValue(BODY_TYPES, value.bodyType) &&
     hasValue(OUTFITS, value.outfit) &&
     hasColor(SHIRT_COLORS, value.shirtColor) &&
@@ -223,10 +319,35 @@ export function isPlayerAppearance(value: unknown): value is PlayerAppearance {
     hasValue(HEADWEAR, value.headwear) &&
     hasValue(HAIR_STYLES, value.hairStyle) &&
     hasValue(FACIAL_HAIR, value.facialHair) &&
-    typeof value.glasses === 'boolean'
-  );
+    typeof value.glasses === 'boolean';
+  if (!baseValid) return false;
+  return value.features === undefined || isCharacterFeatures(value.features);
+}
+
+/** Fill in creator details for old saves and keep every model in sync. */
+export function normalizePlayerAppearance(value: unknown): PlayerAppearance {
+  const source = isPlayerAppearance(value) ? (value as PlayerAppearance) : DEFAULT_PLAYER_APPEARANCE;
+  const raw = isRecord(value) ? value.features : undefined;
+  const features = { ...DEFAULT_CHARACTER_FEATURES };
+  if (isRecord(raw)) {
+    if (hasValue(FACE_SHAPES, raw.faceShape)) features.faceShape = raw.faceShape;
+    if (hasValue(EYE_SHAPES, raw.eyeShape)) features.eyeShape = raw.eyeShape;
+    if (hasValue(BROW_STYLES, raw.browStyle)) features.browStyle = raw.browStyle;
+    if (hasValue(NOSE_SHAPES, raw.noseShape)) features.noseShape = raw.noseShape;
+    if (hasColor(HAIR_COLORS, raw.hairColor)) features.hairColor = raw.hairColor;
+    if (hasColor(ACCENT_COLORS, raw.accentColor)) features.accentColor = raw.accentColor;
+    if (typeof raw.earring === 'boolean') features.earring = raw.earring;
+    if (typeof raw.capBackwards === 'boolean') features.capBackwards = raw.capBackwards;
+    if (typeof raw.heightScale === 'number' && raw.heightScale >= 0.9 && raw.heightScale <= 1.1) {
+      features.heightScale = raw.heightScale;
+    }
+    if (typeof raw.shoulderScale === 'number' && raw.shoulderScale >= 0.9 && raw.shoulderScale <= 1.1) {
+      features.shoulderScale = raw.shoulderScale;
+    }
+  }
+  return { ...source, features };
 }
 
 export function copyPlayerAppearance(appearance: PlayerAppearance): PlayerAppearance {
-  return { ...appearance };
+  return normalizePlayerAppearance(appearance);
 }
