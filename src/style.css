@@ -60,7 +60,8 @@ body {
 }
 
 #fullscreen-toggle,
-#install-app {
+#install-app,
+#settings-toggle {
   position: absolute;
   top: calc(max(0px, env(safe-area-inset-top) - 10px) + 8px);
   left: calc(58px + env(safe-area-inset-left));
@@ -88,13 +89,20 @@ body {
   left: calc(96px + env(safe-area-inset-left));
 }
 
+#settings-toggle {
+  left: auto;
+  right: calc(12px + env(safe-area-inset-right));
+}
+
 #fullscreen-toggle[hidden],
-#install-app[hidden] {
+#install-app[hidden],
+#settings-toggle[hidden] {
   display: none;
 }
 
 #fullscreen-toggle svg,
-#install-app svg {
+#install-app svg,
+#settings-toggle svg {
   display: block;
   width: 17px;
   height: 17px;
@@ -863,8 +871,15 @@ body {
     height: 30px;
   }
 
+  #settings-toggle {
+    right: calc(8px + env(safe-area-inset-right));
+    width: 30px;
+    height: 30px;
+  }
+
   #fullscreen-toggle svg,
-  #install-app svg {
+  #install-app svg,
+  #settings-toggle svg {
     width: 15px;
     height: 15px;
   }
@@ -1991,7 +2006,7 @@ body {
 /* Multiplayer online counter */
 .online-count {
   position: absolute;
-  top: calc(max(0px, env(safe-area-inset-top) - 10px) + 8px);
+  top: calc(max(0px, env(safe-area-inset-top) - 10px) + 48px);
   right: calc(12px + env(safe-area-inset-right));
   z-index: 14;
   padding: 6px 10px;
@@ -2007,5 +2022,121 @@ body {
 }
 
 .online-count.is-hidden {
+  display: none !important;
+}
+
+/* In-game account settings */
+.settings-overlay {
+  z-index: 220;
+  background: radial-gradient(circle at 50% 40%, rgba(12, 22, 17, 0.94), rgba(6, 10, 13, 0.97));
+}
+
+.settings-card {
+  width: 90%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: rgba(14, 22, 18, 0.97);
+  border: 2px solid rgba(255, 210, 74, 0.35);
+  border-radius: 12px;
+  padding: 16px 20px 18px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+}
+
+.settings-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.settings-head h2 {
+  font-size: 17px;
+  letter-spacing: 0.04em;
+  margin: 2px 0 0;
+}
+
+.settings-close {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f2efe9;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.settings-status,
+.settings-online {
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #d7e6db;
+  margin-bottom: 7px;
+  line-height: 1.45;
+}
+
+.settings-online {
+  color: #86efac;
+  border-color: rgba(74, 222, 128, 0.35);
+  background: rgba(20, 46, 30, 0.35);
+}
+
+.settings-online.is-off {
+  color: #ffb4a8;
+  border-color: rgba(248, 113, 113, 0.35);
+  background: rgba(60, 18, 18, 0.3);
+}
+
+.settings-credentials {
+  margin-top: 10px;
+}
+
+.settings-credentials .input-group {
+  margin-bottom: 8px;
+}
+
+.settings-error {
+  min-height: 16px;
+  color: #ff9a8b;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  margin: 4px 0 6px;
+}
+
+.settings-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.settings-actions .flow-btn {
+  padding: 9px 12px;
+  font-size: 11px;
+}
+
+.settings-danger {
+  border-color: rgba(248, 113, 113, 0.55);
+  color: #ffb4a8;
+}
+
+.settings-note {
+  margin-top: 10px;
+  font-size: 9px;
+  line-height: 1.4;
+  text-align: center;
+  color: #8aa094;
+}
+
+.is-hidden {
   display: none !important;
 }

@@ -1,6 +1,7 @@
 import './style.css';
 import { Game } from './game/Game';
 import { IntroFlow } from './game/ui/IntroFlow';
+import { SettingsPanel } from './game/ui/SettingsPanel';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const params = new URLSearchParams(window.location.search);
@@ -44,6 +45,12 @@ window.__roam = {
   game,
   portrait: window.innerHeight > window.innerWidth
 };
+
+new SettingsPanel({
+  onUserChanged: (user) => game.setUser(user),
+  isPaused: () => game.isPaused,
+  setPaused: (paused) => game.setMenuPaused(paused)
+}).attach();
 
 async function tryLockLandscape(): Promise<void> {
   try {

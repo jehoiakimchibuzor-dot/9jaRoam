@@ -908,6 +908,12 @@ export class Game {
   setUser(user: UserProfile): void {
     this.user = user;
 
+    // Presence must be refreshed on every profile change. Restored progress can
+    // make the occupation bonus key match on later loads, but the player still
+    // needs to rejoin the multiplayer room.
+    if (user.isGuest) this.multiplayer.stop();
+    else void this.multiplayer.start(user);
+
     const hpMultiplier = this.vehicleHpMultiplier();
     for (const car of this.drivableVehicles) {
       const target = Math.round(this.vehicleHealthCap(car) * hpMultiplier);
@@ -927,8 +933,6 @@ export class Game {
 
     this.occupationBonusKey = key;
     this.saveProgress();
-
-    if (!user.isGuest) void this.multiplayer.start(user);
   }
 
   private get occupation(): string {
@@ -972,7 +976,9 @@ export class Game {
   }
 
   private onPlayersUpdated(players: RemotePlayerState[]): void {
-    const count = players.length;
+    // Count presence, not just renderable poses: a second phone can be online
+    // while it is paused or has not moved yet.
+    const count = this.multiplayer.onlineCount;
     this.remotePlayers?.update(players, this.multiplayer.selfUid);
 
     if (this.onlineBadge) {
@@ -1008,6 +1014,15 @@ export class Game {
     this.running = true;
     this.lastTime = performance.now();
     requestAnimationFrame((t) => this.loop(t));
+  }
+
+  get isPaused(): boolean {
+    return this.paused;
+  }
+
+  /** Used by overlay menus so the world freezes while they are open. */
+  setMenuPaused(paused: boolean): void {
+    this.setPaused(paused);
   }
 
   /** Freeze simulation while keeping the last frame on screen. */
