@@ -220,8 +220,66 @@ if (isIosBrowser && !isStandalone && !sessionStorage.getItem(INSTALL_DISMISS_KEY
   installBanner.removeAttribute('hidden');
 }
 
+// ── PWA auto-update ──────────────────────────────────────────
+// A new deploy should reach an already-open game without the player
+// having to clear their browser cache or reinstall the app.
+const UPDATE_RELOAD_KEY = '9ja_roam_update_reload';
+const hadServiceWorkerController =
+  'serviceWorker' in navigator && Boolean(navigator.serviceWorker.controller);
+
+try {
+  sessionStorage.removeItem(UPDATE_RELOAD_KEY);
+} catch {
+  // Storage can be unavailable in private modes; updating still works.
+}
+
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  void navigator.serviceWorker.register('./sw.js').catch(() => {
-    // Offline support is optional; ignore registration failures.
+  let reloading = false;
+
+  const showUpdateToast = (): void => {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.textContent = 'NEW UPDATE · REFRESHING…';
+    toast.classList.add('show');
+  };
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    // Skip the very first install (there was no previous controller) and
+    // guard against the reload itself causing another reload.
+    if (!hadServiceWorkerController || reloading) return;
+    if (sessionStorage.getItem(UPDATE_RELOAD_KEY)) return;
+
+    reloading = true;
+    sessionStorage.setItem(UPDATE_RELOAD_KEY, '1');
+    showUpdateToast();
+    window.setTimeout(() => location.reload(), 700);
   });
+
+  void navigator.serviceWorker
+    .register('./sw.js', { updateViaCache: 'none' })
+    .then((registration) => {
+      const checkForUpdate = (): void => {
+        void registration.update().catch(() => undefined);
+      };
+
+      registration.addEventListener('updatefound', () => {
+        const installing = registration.installing;
+        if (!installing) return;
+        installing.addEventListener('statechange', () => {
+          if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+            installing.postMessage('SKIP_WAITING');
+          }
+        });
+      });
+
+      checkForUpdate();
+      window.addEventListener('focus', checkForUpdate);
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) checkForUpdate();
+      });
+      window.setInterval(checkForUpdate, 60_000);
+    })
+    .catch(() => {
+      // Offline support is optional; ignore registration failures.
+    });
 }
