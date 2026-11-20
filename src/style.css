@@ -853,8 +853,18 @@ body {
 }
 
 @media (orientation: portrait) {
-  #rotate {
+  #rotate:not(.is-hidden) {
     display: flex;
+  }
+
+  /* Sign-in, onboarding and character creation are designed to be read
+     vertically. Keep their cards comfortably inside a portrait screen. */
+  .flow-overlay {
+    padding: 16px 12px;
+  }
+
+  .auth-card {
+    max-height: calc(100vh - 32px);
   }
 }
 

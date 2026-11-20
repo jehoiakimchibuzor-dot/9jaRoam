@@ -13,6 +13,25 @@ const game = new Game(canvas, {
   minimap: document.getElementById('minimap') as HTMLCanvasElement | null
 });
 
+// The sign-in / onboarding flow stays usable in portrait. The rotate prompt
+// only appears once the player is about to enter the actual landscape game.
+let gameStarted = false;
+const rotateEl = document.getElementById('rotate');
+
+function isPortrait(): boolean {
+  return window.matchMedia('(orientation: portrait)').matches || window.innerHeight > window.innerWidth;
+}
+
+function updateRotatePrompt(): void {
+  if (!rotateEl) return;
+  rotateEl.classList.toggle('is-hidden', !gameStarted || !isPortrait());
+  if (window.__roam) window.__roam.portrait = isPortrait();
+}
+
+window.addEventListener('resize', updateRotatePrompt);
+window.addEventListener('orientationchange', updateRotatePrompt);
+updateRotatePrompt();
+
 if (params.has('diag')) {
   const diag = document.getElementById('diag');
   if (diag) diag.style.display = 'block';
@@ -26,6 +45,9 @@ const intro = new IntroFlow((user) => {
   console.log('9ja Roam · authenticated as:', user.username, user.isGuest ? '(guest)' : '');
   game.setUser(user);
   game.start();
+  gameStarted = true;
+  updateRotatePrompt();
+  requestGameFullscreen();
 });
 
 intro.start();
@@ -142,9 +164,12 @@ function requestGameFullscreen(): void {
   });
 }
 
-// The first tap is a user gesture, which lets browsers hide their address bar
-// and lock the phone to landscape. Retry on later taps if the browser refused.
-window.addEventListener('pointerdown', requestGameFullscreen, { capture: true });
+// Only ask for fullscreen / landscape once the game has actually started.
+// Taps on the portrait sign-in screens must not rotate the phone away.
+// Retry on later taps if the browser refused the first request.
+window.addEventListener('pointerdown', () => {
+  if (gameStarted) requestGameFullscreen();
+}, { capture: true });
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
