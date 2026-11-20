@@ -232,6 +232,48 @@ interface HudElements {
   deathButton: HTMLElement | null;
 }
 
+interface SavedVector {
+  x: number;
+  y: number;
+  z: number;
+}
+
+interface SavedVehicleState {
+  saveId?: string;
+  position: SavedVector;
+  yaw: number;
+  signature?: string;
+  kind?: VehicleRig['kind'];
+  label?: string;
+  speed?: number;
+  fuel?: number;
+  maxFuel?: number;
+  health?: number;
+  maxHealth?: number;
+  pitch?: number;
+  roll?: number;
+  altitude?: number;
+  verticalSpeed?: number;
+  rotorSpeed?: number;
+}
+
+interface SavedPlayerState {
+  position: SavedVector;
+  yaw: number;
+}
+
+interface SavedResumeState {
+  player: SavedPlayerState | null;
+  mode: 'foot' | 'drive';
+  insideSiteId: string | null;
+  vehicle: SavedVehicleState | null;
+  health: number;
+  armour: number;
+  wanted: number;
+  chutes: number;
+  gameClockMs: number;
+}
+
 interface ProgressSaveData {
   version: 1;
   money: number;
@@ -242,6 +284,31 @@ interface ProgressSaveData {
   weapons?: WeaponInventorySnapshot;
   appearance?: PlayerAppearance;
   occupationBonusKey?: string;
+  vehicleStates?: Record<string, SavedVehicleState>;
+  resume?: SavedResumeState;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function roundSaved(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function savedVectorFrom(position: THREE.Vector3): SavedVector {
+  return {
+    x: roundSaved(position.x),
+    y: roundSaved(position.y),
+    z: roundSaved(position.z)
+  };
+}
+
+function readSavedVector(value: unknown): SavedVector | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Partial<SavedVector>;
+  if (!isFiniteNumber(raw.x) || !isFiniteNumber(raw.y) || !isFiniteNumber(raw.z)) return null;
+  return { x: raw.x, y: raw.y, z: raw.z };
 }
 
 const CAR_ACCEL = 8.5;
@@ -321,6 +388,7 @@ export class Game {
   private bankStorageAvailable = true;
   private progressStorageAvailable = true;
   private progressAutosaveTimer = 0;
+  private resumeRestored = false;
   private fuelWarned = false;
   private wanted = 0;
   private wantedDelay = 0;
@@ -901,6 +969,14 @@ export class Game {
     window.addEventListener('keydown', unlock, { once: true });
     window.addEventListener('resize', () => this.onResize());
 
+    // Swiping the app away fires visibilitychange/pagehide rather than a clean
+    // close. Persist synchronously so the next launch resumes at this exact spot.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') this.saveProgress();
+    });
+    window.addEventListener('pagehide', () => this.saveProgress());
+    window.addEventListener('beforeunload', () => this.saveProgress());
+
     this.setHint('Drag MOVE to walk \u00b7 every button is labelled \u00b7 tap PAUSE for the full controls');
   }
 
@@ -1013,6 +1089,13 @@ export class Game {
     if (this.running) return;
     this.running = true;
     this.lastTime = performance.now();
+    // Capture the restored state immediately, including the first spawn for a
+    // brand-new player. Later autosaves and app-exit hooks keep it current.
+    this.saveProgress();
+    if (this.resumeRestored) {
+      this.showToast('PROGRESS RESTORED');
+      this.setHint('RESUMED FROM YOUR LAST SPOT · keep exploring Kano');
+    }
     requestAnimationFrame((t) => this.loop(t));
   }
 
@@ -2773,6 +2856,7 @@ export class Game {
         this.carSpeed = 0;
         this.resetActionTracking();
         this.setHint('Hold GAS to drive · steer with LEFT / RIGHT · H-BRAKE to slide · EXIT to get out');
+        this.saveProgress();
       }
     } else {
       const doorT = clamp(t / 0.35, 0, 1);
@@ -2799,6 +2883,7 @@ export class Game {
         this.input.reset();
         this.resetActionTracking();
         this.setHint('Drag MOVE to walk \u00b7 every button is labelled \u00b7 tap PAUSE for the full controls');
+        this.saveProgress();
       }
     }
   }
@@ -2859,6 +2944,7 @@ export class Game {
     this.camDist = 2.8;
     this.snapCameraNext = true;
     this.input.reset();
+    this.saveProgress();
   }
 
   private beginSiteExit(): void {
@@ -2949,6 +3035,7 @@ export class Game {
     this.autoEntryLock = true;
     this.input.reset();
     this.audio.door();
+    this.saveProgress();
   }
 
   private findInteraction(): FootInteraction | null {
@@ -3683,6 +3770,7 @@ export class Game {
           vehicle.fuel = clamp(fuel, 0, vehicle.maxFuel ?? 100);
         }
       }
+      this.resumeRestored = this.restoreWorldState(data.resume, data.vehicleStates);
     } catch (error) {
       console.error('Unable to load saved progress; saving is disabled for this session.', error);
       this.progressStorageAvailable = false;
@@ -3691,7 +3779,42 @@ export class Game {
   }
 
   private saveProgress(): void {
-    if (!this.progressStorageAvailable) return;
+    // Do not overwrite an existing save with fresh defaults while the player is
+    // still in splash/onboarding/auth. Once a profile is attached, saving is live.
+    if (!this.progressStorageAvailable || (!this.running && !this.user)) return;
+
+    const vehicleStates: Record<string, SavedVehicleState> = {};
+    for (const vehicle of this.drivableVehicles) {
+      const id = vehicle.group.userData.saveId;
+      if (typeof id !== 'string') continue;
+      vehicleStates[id] = {
+        saveId: id,
+        position: savedVectorFrom(vehicle.group.position),
+        yaw: roundSaved(vehicle.group.rotation.y),
+        signature: this.vehicleSignature(vehicle),
+        kind: vehicle.kind,
+        label: vehicle.access?.label,
+        speed: roundSaved(this.activeVehicle === vehicle ? this.carSpeed : 0),
+        fuel: roundSaved(vehicle.fuel ?? vehicle.maxFuel ?? 100),
+        maxFuel: roundSaved(vehicle.maxFuel ?? 100),
+        health: vehicle.health === undefined ? undefined : roundSaved(vehicle.health),
+        maxHealth: vehicle.maxHealth === undefined ? undefined : roundSaved(vehicle.maxHealth),
+        pitch: vehicle.pitch === undefined ? undefined : roundSaved(vehicle.pitch),
+        roll: vehicle.roll === undefined ? undefined : roundSaved(vehicle.roll),
+        altitude: vehicle.altitude === undefined ? undefined : roundSaved(vehicle.altitude),
+        verticalSpeed: vehicle.verticalSpeed === undefined ? undefined : roundSaved(vehicle.verticalSpeed),
+        rotorSpeed: vehicle.rotorSpeed === undefined ? undefined : roundSaved(vehicle.rotorSpeed)
+      };
+    }
+
+    const wasDriving = this.mode === 'drive' && this.activeVehicle !== null;
+    const dead = this.dead;
+    const playerPosition = dead
+      ? savedVectorFrom(SPAWN)
+      : savedVectorFrom(this.player.group.position);
+    const playerYaw = dead ? Math.PI : roundSaved(this.player.yaw);
+    const activeVehicle = dead ? null : this.activeVehicle;
+
     const data: ProgressSaveData = {
       version: 1,
       money: this.money,
@@ -3705,7 +3828,19 @@ export class Game {
         const id = vehicle.group.userData.saveId;
         if (typeof id === 'string') saved[id] = vehicle.fuel ?? vehicle.maxFuel ?? 100;
         return saved;
-      }, {})
+      }, {}),
+      vehicleStates,
+      resume: {
+        player: { position: playerPosition, yaw: playerYaw },
+        mode: wasDriving && !dead ? 'drive' : 'foot',
+        insideSiteId: !dead && this.inside ? this.activeInterior?.site.id ?? null : null,
+        vehicle: activeVehicle ? this.vehicleStateFromRig(activeVehicle) : null,
+        health: dead ? PLAYER_MAX_HP : roundSaved(this.health.hp),
+        armour: dead ? 0 : roundSaved(this.armour),
+        wanted: dead ? 0 : roundSaved(this.wanted),
+        chutes: dead ? 0 : this.chutes,
+        gameClockMs: Math.round(this.gameClockMs)
+      }
     };
     try {
       window.localStorage.setItem(PROGRESS_SAVE_KEY, JSON.stringify(data));
@@ -3714,6 +3849,269 @@ export class Game {
       this.progressStorageAvailable = false;
       this.showToast('SAVE FAILED \u00b7 PROGRESS NOT SAVED');
     }
+  }
+
+  private vehicleStateFromRig(vehicle: VehicleRig): SavedVehicleState {
+    const id = vehicle.group.userData.saveId;
+    return {
+      saveId: typeof id === 'string' ? id : undefined,
+      position: savedVectorFrom(vehicle.group.position),
+      yaw: roundSaved(vehicle.group.rotation.y),
+      signature: this.vehicleSignature(vehicle),
+      kind: vehicle.kind,
+      label: vehicle.access?.label,
+      speed: roundSaved(this.carSpeed),
+      fuel: roundSaved(vehicle.fuel ?? vehicle.maxFuel ?? 100),
+      maxFuel: roundSaved(vehicle.maxFuel ?? 100),
+      health: vehicle.health === undefined ? undefined : roundSaved(vehicle.health),
+      maxHealth: vehicle.maxHealth === undefined ? undefined : roundSaved(vehicle.maxHealth),
+      pitch: vehicle.pitch === undefined ? undefined : roundSaved(vehicle.pitch),
+      roll: vehicle.roll === undefined ? undefined : roundSaved(vehicle.roll),
+      altitude: vehicle.altitude === undefined ? undefined : roundSaved(vehicle.altitude),
+      verticalSpeed: vehicle.verticalSpeed === undefined ? undefined : roundSaved(vehicle.verticalSpeed),
+      rotorSpeed: vehicle.rotorSpeed === undefined ? undefined : roundSaved(vehicle.rotorSpeed)
+    };
+  }
+
+  private vehicleSignature(vehicle: VehicleRig): string {
+    return vehicle.kind ?? vehicle.access?.label ?? 'vehicle';
+  }
+
+  private parseSavedVehicleState(value: unknown): SavedVehicleState | null {
+    if (!value || typeof value !== 'object') return null;
+    const raw = value as Partial<SavedVehicleState>;
+    const position = readSavedVector(raw.position);
+    if (!position || !isFiniteNumber(raw.yaw)) return null;
+    const kind =
+      raw.kind === 'car' || raw.kind === 'bike' || raw.kind === 'plane' || raw.kind === 'helicopter'
+        ? raw.kind
+        : undefined;
+    const optionalNumber = (input: unknown): number | undefined =>
+      isFiniteNumber(input) ? input : undefined;
+    return {
+      saveId: typeof raw.saveId === 'string' ? raw.saveId : undefined,
+      position,
+      yaw: raw.yaw,
+      signature: typeof raw.signature === 'string' ? raw.signature : undefined,
+      kind,
+      label: typeof raw.label === 'string' ? raw.label : undefined,
+      speed: optionalNumber(raw.speed),
+      fuel: optionalNumber(raw.fuel),
+      maxFuel: optionalNumber(raw.maxFuel),
+      health: optionalNumber(raw.health),
+      maxHealth: optionalNumber(raw.maxHealth),
+      pitch: optionalNumber(raw.pitch),
+      roll: optionalNumber(raw.roll),
+      altitude: optionalNumber(raw.altitude),
+      verticalSpeed: optionalNumber(raw.verticalSpeed),
+      rotorSpeed: optionalNumber(raw.rotorSpeed)
+    };
+  }
+
+  private restoreWorldState(resumeValue: unknown, vehicleStatesValue: unknown): boolean {
+    if (!resumeValue || typeof resumeValue !== 'object') return false;
+    const data = resumeValue as Partial<SavedResumeState>;
+    const rawPlayer = data.player as Partial<SavedPlayerState> | undefined;
+    const playerPosition = rawPlayer ? readSavedVector(rawPlayer.position) : null;
+    const playerYaw = rawPlayer && isFiniteNumber(rawPlayer.yaw) ? rawPlayer.yaw : Math.PI;
+    const vehicleState = this.parseSavedVehicleState(data.vehicle);
+    const mode: 'foot' | 'drive' = data.mode === 'drive' ? 'drive' : 'foot';
+
+    this.health.hp = isFiniteNumber(data.health)
+      ? clamp(data.health, 1, PLAYER_MAX_HP)
+      : PLAYER_MAX_HP;
+    this.health.dead = false;
+    this.armour = isFiniteNumber(data.armour) ? Math.max(0, data.armour) : 0;
+    this.wanted = isFiniteNumber(data.wanted) ? clamp(data.wanted, 0, 5) : 0;
+    this.chutes = isFiniteNumber(data.chutes) ? Math.max(0, Math.floor(data.chutes)) : 0;
+    if (isFiniteNumber(data.gameClockMs) && data.gameClockMs > 0) {
+      this.gameClockMs = data.gameClockMs;
+    }
+
+    if (vehicleStatesValue && typeof vehicleStatesValue === 'object' && !Array.isArray(vehicleStatesValue)) {
+      for (const [id, rawState] of Object.entries(vehicleStatesValue)) {
+        const vehicle = this.drivableVehicles.find((candidate) => candidate.group.userData.saveId === id);
+        const state = this.parseSavedVehicleState(rawState);
+        if (!vehicle || !state) continue;
+        this.applySavedVehiclePose(vehicle, state);
+      }
+    }
+
+    const insideSiteId = typeof data.insideSiteId === 'string' ? data.insideSiteId : null;
+    if (insideSiteId) {
+      const site = this.city.sites.find((candidate) => candidate.id === insideSiteId);
+      if (site) {
+        this.applyEnterSite(site);
+        if (playerPosition && this.activeInterior) {
+          const interior = this.activeInterior;
+          const halfW = interior.roomW / 2 - 0.6;
+          const halfD = interior.roomD / 2 - 0.6;
+          this.player.group.position.set(
+            clamp(playerPosition.x, interior.center.x - halfW, interior.center.x + halfW),
+            INTERIOR_GROUND,
+            clamp(playerPosition.z, interior.center.z - halfD, interior.center.z + halfD)
+          );
+          this.player.faceYaw(playerYaw);
+          this.resolveFootCollisions();
+          this.snapCameraNext = true;
+        }
+        return true;
+      }
+    }
+
+    if (mode === 'drive' && vehicleState && this.restoreActiveVehicle(vehicleState)) return true;
+
+    if (playerPosition) {
+      this.placePlayerOutdoors(playerPosition, playerYaw);
+      return true;
+    }
+    return false;
+  }
+
+  private applySavedVehiclePose(vehicle: VehicleRig, state: SavedVehicleState): void {
+    vehicle.group.position.set(
+      clamp(state.position.x, this.city.worldMinX + 2, this.city.worldMaxX - 2),
+      state.position.y,
+      clamp(state.position.z, this.city.worldMinZ + 4, this.city.worldMaxZ - 4)
+    );
+    vehicle.group.rotation.y = state.yaw;
+    if (state.kind) vehicle.kind = state.kind;
+    if (state.altitude !== undefined) vehicle.altitude = state.altitude;
+    if (state.verticalSpeed !== undefined) vehicle.verticalSpeed = state.verticalSpeed;
+    if (state.pitch !== undefined) vehicle.pitch = state.pitch;
+    if (state.roll !== undefined) vehicle.roll = state.roll;
+    if (state.rotorSpeed !== undefined) vehicle.rotorSpeed = state.rotorSpeed;
+
+    ensureRigHealth(vehicle);
+    if (state.maxHealth !== undefined) vehicle.maxHealth = Math.max(1, state.maxHealth);
+    if (state.health !== undefined) {
+      vehicle.health = clamp(state.health, 0, vehicle.maxHealth ?? this.vehicleHealthCap(vehicle));
+    }
+    if (state.maxFuel !== undefined) vehicle.maxFuel = Math.max(1, state.maxFuel);
+    if (state.fuel !== undefined) {
+      vehicle.fuel = clamp(state.fuel, 0, vehicle.maxFuel ?? 100);
+    }
+
+    if (vehicle.kind === 'plane' || vehicle.kind === 'helicopter') {
+      this.eulerScratch.set(vehicle.pitch ?? 0, state.yaw, vehicle.roll ?? 0, 'YXZ');
+      vehicle.group.quaternion.setFromEuler(this.eulerScratch);
+      vehicle.yaw = state.yaw;
+    }
+  }
+
+  private vehicleMatchesSavedState(vehicle: VehicleRig, state: SavedVehicleState): boolean {
+    if (state.saveId && vehicle.group.userData.saveId === state.saveId) return true;
+    if (state.kind && vehicle.kind === state.kind) return true;
+    if (!state.signature) return false;
+    const current = this.vehicleSignature(vehicle).toLowerCase();
+    const saved = state.signature.toLowerCase();
+    return current === saved || current.includes(saved) || saved.includes(current);
+  }
+
+  private restoreActiveVehicle(state: SavedVehicleState): boolean {
+    let vehicle: VehicleRig | null = null;
+
+    if (state.saveId) {
+      vehicle =
+        this.drivableVehicles.find((candidate) => candidate.group.userData.saveId === state.saveId) ??
+        null;
+    }
+
+    if (!vehicle) {
+      const target = new THREE.Vector3(state.position.x, state.position.y, state.position.z);
+      let bestScore = Number.POSITIVE_INFINITY;
+      const consider = (candidate: VehicleRig, fromTraffic: boolean): void => {
+        if (!candidate.access || candidate.wrecked || (candidate.health ?? 1) <= 0) return;
+        const distance = candidate.group.position.distanceTo(target);
+        const score =
+          distance +
+          (this.vehicleMatchesSavedState(candidate, state) ? 0 : 80) +
+          (fromTraffic ? 10 : 0);
+        if (score < bestScore) {
+          bestScore = score;
+          vehicle = candidate;
+        }
+      };
+      for (const candidate of this.drivableVehicles) consider(candidate, false);
+      for (const entry of this.traffic.list) consider(entry.rig, true);
+      if (!vehicle || !Number.isFinite(bestScore)) return false;
+
+      const restored = vehicle as VehicleRig;
+      if (this.traffic.takeVehicle(restored)) {
+        if (!this.drivableVehicles.includes(restored)) this.drivableVehicles.push(restored);
+      }
+      restored.group.userData.saveId = state.saveId ?? `resume-vehicle-${Date.now()}`;
+      vehicle = restored;
+    }
+
+    const active = vehicle as VehicleRig;
+    this.applySavedVehiclePose(active, state);
+    this.placePlayerInVehicle(active, state.speed ?? 0);
+    return true;
+  }
+
+  private placePlayerInVehicle(vehicle: VehicleRig, speed: number): void {
+    const isAircraft = vehicle.kind === 'plane' || vehicle.kind === 'helicopter';
+    const isBike = !isAircraft && vehicle.length < 2.5;
+    const maxSpeed = vehicle.maxSpeed ?? (isAircraft ? 42 : CAR_MAX);
+
+    this.mode = 'drive';
+    this.activeVehicle = vehicle;
+    this.fall = null;
+    if (this.parachuteMesh) this.parachuteMesh.visible = false;
+    this.carYaw = vehicle.group.rotation.y;
+    this.carSpeed = clamp(speed, CAR_MAX_REVERSE, maxSpeed);
+    this.player.velocity.set(0, 0, 0);
+    this.player.group.rotation.set(0, this.carYaw, 0);
+    this.player.setRiding(isBike);
+    this.player.group.visible = isBike;
+    if (vehicle.access) {
+      this.player.group.position.copy(this.vehicleLocalToWorld(vehicle, vehicle.access.seat));
+    }
+    if (isAircraft) {
+      this.player.group.quaternion.copy(vehicle.group.quaternion);
+      this.player.group.visible = false;
+      if (vehicle.driver) vehicle.driver.visible = true;
+      this.input.setControlMode(vehicle.kind === 'helicopter' ? 'heli' : 'plane');
+    } else {
+      if (vehicle.driver) vehicle.driver.visible = !isBike;
+      if (isBike) this.player.ridePose(0);
+      this.input.setControlMode('car');
+    }
+    this.camYaw = this.carYaw + Math.PI;
+    this.camPitch = 0.2;
+    this.entryCooldown = 0;
+    this.snapCameraNext = true;
+    this.input.reset();
+    this.resetActionTracking();
+  }
+
+  private placePlayerOutdoors(position: SavedVector, yaw: number): void {
+    this.mode = 'foot';
+    this.inside = false;
+    this.activeInterior = null;
+    this.activeVehicle = null;
+    this.fall = null;
+    if (this.parachuteMesh) this.parachuteMesh.visible = false;
+    this.player.setRiding(false);
+    this.player.group.visible = true;
+    this.player.group.position.set(position.x, position.y, position.z);
+    this.player.faceYaw(yaw);
+    this.player.velocity.set(0, 0, 0);
+    this.player.resetActions();
+    this.carSpeed = 0;
+    this.camYaw = yaw + Math.PI;
+    this.camPitch = 0.2;
+    this.camDist = 5.4;
+    this.entryCooldown = 0;
+    this.snapCameraNext = true;
+    this.input.setControlMode('foot');
+    this.input.reset();
+    this.resolveFootCollisions();
+    this.player.group.position.y = this.city.groundHeightAt(
+      this.player.group.position.x,
+      this.player.group.position.z
+    );
   }
 
   private openCashWithdrawal(spot: ServiceSpot): void {
@@ -4102,7 +4500,6 @@ export class Game {
     this.respawnTimer = 0;
     this.ui.death?.classList.remove('open');
     this.money = Math.max(0, this.money - DEATH_FEE);
-    this.saveProgress();
     restoreHealth(this.health);
     this.player.group.rotation.z = 0;
     this.player.group.position.copy(SPAWN);
@@ -4131,6 +4528,7 @@ export class Game {
     this.audio.siren(false);
     if (this.ui.flash) this.ui.flash.style.opacity = '0';
     this.setHint('Back on the street. Watch your back.');
+    this.saveProgress();
   }
 
   private fireWeapon(fromVehicle: boolean): void {
