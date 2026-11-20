@@ -17,19 +17,29 @@ const game = new Game(canvas, {
 // only appears once the player is about to enter the actual landscape game.
 let gameStarted = false;
 const rotateEl = document.getElementById('rotate');
+const rotateContinue = document.getElementById('rotate-continue');
+
+// While the account screens are open the page must allow vertical scrolling;
+// gameplay itself keeps touch-action disabled for the joystick controls.
+document.body.classList.add('intro-active');
 
 function isPortrait(): boolean {
   return window.matchMedia('(orientation: portrait)').matches || window.innerHeight > window.innerWidth;
 }
 
 function updateRotatePrompt(): void {
+  const portrait = isPortrait();
+  if (window.__roam) window.__roam.portrait = portrait;
   if (!rotateEl) return;
-  rotateEl.classList.toggle('is-hidden', !gameStarted || !isPortrait());
-  if (window.__roam) window.__roam.portrait = isPortrait();
+  const show = gameStarted && portrait;
+  rotateEl.classList.toggle('is-hidden', !show);
+  rotateEl.setAttribute('aria-hidden', show ? 'false' : 'true');
+  document.body.classList.toggle('rotate-prompted', show);
 }
 
 window.addEventListener('resize', updateRotatePrompt);
 window.addEventListener('orientationchange', updateRotatePrompt);
+rotateContinue?.addEventListener('click', () => requestGameFullscreen());
 updateRotatePrompt();
 
 if (params.has('diag')) {
@@ -46,8 +56,11 @@ const intro = new IntroFlow((user) => {
   game.setUser(user);
   game.start();
   gameStarted = true;
+  document.body.classList.remove('intro-active');
+  document.body.classList.add('game-active');
   updateRotatePrompt();
-  requestGameFullscreen();
+  // In portrait, wait for the rotate prompt's tap before locking landscape.
+  if (!isPortrait()) requestGameFullscreen();
 });
 
 intro.start();
@@ -170,7 +183,7 @@ function requestGameFullscreen(): void {
 // Taps on the portrait sign-in screens must not rotate the phone away.
 // Retry on later taps if the browser refused the first request.
 window.addEventListener('pointerdown', () => {
-  if (gameStarted) requestGameFullscreen();
+  if (gameStarted && !settingsPanel.isOpen()) requestGameFullscreen();
 }, { capture: true });
 
 interface BeforeInstallPromptEvent extends Event {

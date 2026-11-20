@@ -84,13 +84,19 @@ export class SettingsPanel {
     this.setError('');
     this.panel.classList.remove('is-hidden');
     this.panel.classList.add('is-active');
+    document.body.classList.add('settings-active');
     this.refresh();
+  }
+
+  isOpen(): boolean {
+    return this.panel?.classList.contains('is-active') ?? false;
   }
 
   private close(): void {
     if (!this.panel) return;
     this.panel.classList.remove('is-active');
     this.panel.classList.add('is-hidden');
+    document.body.classList.remove('settings-active');
     this.options.setPaused(this.wasPaused);
   }
 
