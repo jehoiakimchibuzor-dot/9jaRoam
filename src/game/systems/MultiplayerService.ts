@@ -31,6 +31,7 @@ type Listener = (players: RemotePlayerState[]) => void;
 
 const WRITE_INTERVAL_MS = 100;
 const STALE_AFTER_MS = 20000;
+const MAX_WRITE_FAILURES = 5;
 
 export class MultiplayerService {
   private static instance: MultiplayerService;
@@ -43,6 +44,7 @@ export class MultiplayerService {
   private listeners = new Set<Listener>();
   private players = new Map<string, RemotePlayerState>();
   private lastWrite = 0;
+  private failures = 0;
   private connected = false;
 
   static getInstance(): MultiplayerService {
@@ -90,7 +92,7 @@ export class MultiplayerService {
       return true;
     } catch (error) {
       console.warn('9ja Roam · multiplayer unavailable:', error);
-      this.stop();
+      this.clearSession();
       return false;
     }
   }
@@ -109,8 +111,18 @@ export class MultiplayerService {
       occupation: this.profile.occupation,
       ...pose,
       updatedAt: serverTimestamp()
+    }).then(() => {
+      this.failures = 0;
     }).catch(() => {
-      // A dropped write will be retried on the next frame.
+      // A dropped write is retried on the next frame. If the account was
+      // signed out/deleted while the tab stayed open, stop retrying instead
+      // of spamming the database with denied writes forever.
+      if (!this.connected) return;
+      this.failures += 1;
+      if (this.failures >= MAX_WRITE_FAILURES) {
+        console.warn('9ja Roam · multiplayer stopped after repeated write failures');
+        this.clearSession();
+      }
     });
   }
 
@@ -121,11 +133,6 @@ export class MultiplayerService {
   }
 
   stop(): void {
-    if (this.playersRef && this.playersCallback) {
-      off(this.playersRef, this.playersCallback);
-    }
-    window.removeEventListener('beforeunload', this.handleUnload);
-
     if (this.db && this.uid) {
       const presenceRef = ref(this.db, `presence/${this.uid}`);
       const selfRef = ref(this.db, `players/${this.uid}`);
@@ -140,6 +147,15 @@ export class MultiplayerService {
       remove(selfRef).catch(() => undefined);
     }
 
+    this.clearSession();
+  }
+
+  private clearSession(): void {
+    if (this.playersRef && this.playersCallback) {
+      off(this.playersRef, this.playersCallback);
+    }
+    window.removeEventListener('beforeunload', this.handleUnload);
+
     this.playersRef = null;
     this.playersCallback = null;
     this.db = null;
@@ -147,6 +163,8 @@ export class MultiplayerService {
     this.profile = null;
     this.players.clear();
     this.connected = false;
+    this.failures = 0;
+    this.listeners.forEach((listener) => listener([]));
   }
 
   private onPlayersSnapshot(snapshot: any): void {
