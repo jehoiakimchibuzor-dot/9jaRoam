@@ -1667,8 +1667,9 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
   opacity: 0.5;
 }
 
-/* Onboarding Screen — premium intro */
-.onboarding-overlay {
+/* Onboarding + auth screens — premium glass intro */
+.onboarding-overlay,
+.auth-overlay {
   isolation: isolate;
   background:
     radial-gradient(circle at 50% -10%, rgba(231, 196, 119, 0.18), transparent 46%),
@@ -1676,7 +1677,8 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
     linear-gradient(180deg, #070a0d 0%, #0c1115 58%, #07090b 100%);
 }
 
-.onboarding-overlay::before {
+.onboarding-overlay::before,
+.auth-overlay::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -1690,7 +1692,8 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
   mask-image: linear-gradient(to bottom, transparent, #000 18%, #000 72%, transparent);
 }
 
-.onboarding-overlay::after {
+.onboarding-overlay::after,
+.auth-overlay::after {
   content: '';
   position: absolute;
   width: min(80vw, 420px);
@@ -1702,6 +1705,13 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
   border-radius: 50%;
   background: radial-gradient(circle, rgba(231, 196, 119, 0.16), transparent 64%);
   filter: blur(4px);
+}
+
+.auth-overlay::after {
+  right: auto;
+  left: -28%;
+  top: 8%;
+  background: radial-gradient(circle, rgba(126, 176, 255, 0.12), transparent 64%);
 }
 
 .onboard-card {
@@ -1994,17 +2004,28 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
 }
 
 .flow-btn {
-  background: linear-gradient(135deg, #ffd24a, #e6b422);
-  border: none;
-  border-radius: 6px;
-  color: #0c140e;
+  border: 1px solid rgba(255, 246, 210, 0.45);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(255, 233, 160, 0.97), rgba(208, 160, 66, 0.95));
+  color: #11130e;
   font-weight: 800;
   font-size: 12px;
   letter-spacing: 0.08em;
   padding: 8px 18px;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(255, 210, 74, 0.25);
-  transition: transform 0.08s ease, filter 0.08s ease;
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.32),
+    0 0 18px rgba(231, 196, 119, 0.18),
+    0 1px 0 rgba(255, 255, 255, 0.55) inset;
+  transition: transform 0.08s ease, filter 0.08s ease, box-shadow 0.2s ease;
+}
+
+.flow-btn:hover {
+  filter: brightness(1.06);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.36),
+    0 0 24px rgba(231, 196, 119, 0.26),
+    0 1px 0 rgba(255, 255, 255, 0.65) inset;
 }
 
 .flow-btn:active {
@@ -2013,50 +2034,84 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
 
 .flow-btn-full {
   width: 100%;
-  padding: 10px;
+  padding: 11px;
   margin-top: 12px;
   font-size: 13px;
 }
 
-/* Auth Screen */
+/* Auth + persona screens */
 .auth-card {
-  width: 90%;
-  max-width: 480px;
+  width: min(92%, 480px);
   max-height: 90vh;
   overflow-y: auto;
-  background: rgba(14, 22, 18, 0.95);
-  border: 2px solid rgba(255, 210, 74, 0.35);
-  border-radius: 12px;
-  padding: 18px 22px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+  padding: 22px 22px 24px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 20px;
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0) 34%),
+    linear-gradient(160deg, rgba(18, 26, 29, 0.82), rgba(8, 12, 16, 0.7));
+  box-shadow:
+    0 28px 70px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.035) inset,
+    0 1px 0 rgba(255, 255, 255, 0.12) inset;
+  -webkit-backdrop-filter: blur(26px) saturate(150%);
+  backdrop-filter: blur(26px) saturate(150%);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(231, 196, 119, 0.35) transparent;
+  -webkit-overflow-scrolling: touch;
+}
+
+.auth-card::-webkit-scrollbar {
+  width: 4px;
+}
+
+.auth-card::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: rgba(231, 196, 119, 0.35);
+}
+
+.persona-card {
+  max-width: 520px;
 }
 
 .auth-header {
   text-align: center;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .auth-kicker {
   font-size: 9px;
-  letter-spacing: 0.2em;
-  color: #ffd24a;
+  letter-spacing: 0.22em;
+  color: #e7c77d;
 }
 
 .auth-header h2 {
-  font-size: 18px;
-  margin: 2px 0 0 0;
-  letter-spacing: 0.04em;
+  margin: 5px 0 0;
+  font-size: 24px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: #f7f3ea;
+}
+
+.auth-subtitle {
+  margin: 7px auto 0;
+  max-width: 340px;
+  color: #9faea5;
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .avatar-section {
-  margin-bottom: 14px;
+  margin-bottom: 15px;
 }
 
-.avatar-label {
+.avatar-label,
+.section-label {
   font-size: 9px;
-  letter-spacing: 0.12em;
+  font-weight: 800;
+  letter-spacing: 0.18em;
   color: #a8b8ae;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   text-align: center;
 }
 
@@ -2070,58 +2125,91 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 6px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 2px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  justify-content: center;
+  gap: 3px;
+  min-height: 70px;
+  padding: 7px 4px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.02));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, transform 0.08s ease;
+}
+
+.avatar-option:active,
+.char-option:active {
+  transform: scale(0.97);
 }
 
 .avatar-option:hover,
 .avatar-option.is-selected {
-  border-color: #ffd24a;
-  background: rgba(255, 210, 74, 0.12);
+  border-color: rgba(231, 196, 119, 0.75);
+  background:
+    linear-gradient(145deg, rgba(231, 196, 119, 0.2), rgba(231, 196, 119, 0.05)),
+    rgba(255, 255, 255, 0.03);
+  box-shadow:
+    0 0 18px rgba(231, 196, 119, 0.18),
+    0 1px 0 rgba(255, 255, 255, 0.16) inset;
 }
 
 .avatar-img {
-  font-size: 22px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(231, 196, 119, 0.3);
+  border-radius: 11px;
+  background: rgba(8, 12, 15, 0.42);
+  color: #f0d28a;
+  font-size: 19px;
+  line-height: 1;
 }
 
-.avatar-option span {
+.avatar-option > span:last-child {
   font-size: 9px;
-  font-weight: 700;
-  margin-top: 2px;
-  color: #d1ded5;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #e2e8e3;
 }
 
 .auth-tabs {
   display: flex;
-  gap: 6px;
-  background: rgba(0, 0, 0, 0.3);
-  padding: 3px;
-  border-radius: 8px;
+  gap: 4px;
+  padding: 4px;
   margin-bottom: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.05);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 
 .auth-tab {
   flex: 1;
+  min-height: 38px;
+  border: 1px solid transparent;
+  border-radius: 9px;
   background: transparent;
-  border: none;
   color: #a8b8ae;
   font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.05em;
-  padding: 7px 4px;
-  border-radius: 6px;
+  letter-spacing: 0.06em;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.18s ease;
+}
+
+.auth-tab:hover {
+  color: #e8eee9;
 }
 
 .auth-tab.is-active {
-  background: rgba(255, 210, 74, 0.2);
-  color: #ffd24a;
-  box-shadow: inset 0 0 0 1px rgba(255, 210, 74, 0.4);
+  border-color: rgba(231, 196, 119, 0.42);
+  background: linear-gradient(135deg, rgba(231, 196, 119, 0.24), rgba(231, 196, 119, 0.08));
+  color: #f0d28a;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.22), 0 1px 0 rgba(255, 255, 255, 0.12) inset;
 }
 
 .auth-form {
@@ -2130,6 +2218,12 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
 
 .auth-form.is-active {
   display: block;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 
 .input-group {
@@ -2139,49 +2233,62 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
 
 .input-group label {
   display: block;
+  margin-bottom: 5px;
   font-size: 9px;
-  letter-spacing: 0.1em;
+  font-weight: 800;
+  letter-spacing: 0.14em;
   color: #a8b8ae;
-  margin-bottom: 3px;
 }
 
 .input-group input {
   width: 100%;
+  min-height: 44px;
   box-sizing: border-box;
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 6px;
-  color: #fff;
-  padding: 8px 10px;
-  font-size: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
   outline: none;
+  background: rgba(5, 9, 12, 0.52);
+  color: #fff;
+  font-size: 16px;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.input-group input::placeholder {
+  color: #6f8076;
 }
 
 .input-group input:focus {
-  border-color: #ffd24a;
-  box-shadow: 0 0 8px rgba(255, 210, 74, 0.2);
+  border-color: rgba(231, 196, 119, 0.75);
+  background: rgba(8, 13, 16, 0.68);
+  box-shadow: 0 0 0 3px rgba(231, 196, 119, 0.12), 0 0 18px rgba(231, 196, 119, 0.1);
 }
 
 .auth-error {
   display: none;
-  background: rgba(220, 38, 38, 0.2);
-  border: 1px solid rgba(239, 68, 68, 0.5);
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  border-radius: 10px;
+  background: rgba(127, 29, 29, 0.28);
   color: #fca5a5;
   font-size: 11px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  margin-bottom: 10px;
   text-align: center;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
 }
 
 .auth-divider {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 14px 0 10px 0;
+  margin: 14px 0 4px;
   font-size: 9px;
-  letter-spacing: 0.15em;
-  color: #6b7b71;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: #73847a;
 }
 
 .auth-divider::before,
@@ -2189,40 +2296,35 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
   content: '';
   flex: 1;
   height: 1px;
-  background: rgba(255, 255, 255, 0.15);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
 }
 
 .flow-btn-google {
-  background: linear-gradient(135deg, #4285f4, #3367d6);
-  border: none;
-  border-radius: 6px;
-  color: #fff;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid rgba(150, 190, 255, 0.4);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(86, 135, 230, 0.22), rgba(66, 133, 244, 0.1));
+  color: #eaf1ff;
   font-weight: 800;
   font-size: 12px;
   letter-spacing: 0.08em;
-  padding: 10px;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(66, 133, 244, 0.25);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24), 0 1px 0 rgba(255, 255, 255, 0.14) inset;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   transition: transform 0.08s ease, filter 0.08s ease;
-  margin-top: 10px;
-  width: 100%;
 }
 
 .flow-btn-google:active {
   transform: scale(0.96);
 }
 
-/* Character Creation Screen */
+/* Persona creation — after sign-in */
 .char-section {
-  margin-bottom: 14px;
-}
-
-.section-label {
-  font-size: 9px;
-  letter-spacing: 0.15em;
-  color: #a8b8ae;
-  margin-bottom: 8px;
-  text-align: center;
+  margin-bottom: 15px;
 }
 
 .char-grid {
@@ -2236,43 +2338,49 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  min-height: 84px;
   padding: 10px 8px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 2px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.02));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   cursor: pointer;
-  transition: all 0.15s ease;
   text-align: center;
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, transform 0.08s ease;
 }
 
 .char-option:hover {
-  border-color: rgba(255, 210, 74, 0.5);
-  background: rgba(255, 210, 74, 0.08);
+  border-color: rgba(231, 196, 119, 0.5);
+  background: rgba(231, 196, 119, 0.08);
 }
 
 .char-option.is-selected {
-  border-color: #ffd24a;
-  background: rgba(255, 210, 74, 0.16);
-  box-shadow: 0 0 15px rgba(255, 210, 74, 0.2);
+  border-color: rgba(231, 196, 119, 0.8);
+  background:
+    linear-gradient(145deg, rgba(231, 196, 119, 0.2), rgba(231, 196, 119, 0.05)),
+    rgba(255, 255, 255, 0.03);
+  box-shadow: 0 0 18px rgba(231, 196, 119, 0.18), 0 1px 0 rgba(255, 255, 255, 0.16) inset;
 }
 
 .char-option-icon {
-  font-size: 26px;
+  font-size: 24px;
   margin-bottom: 2px;
 }
 
-.char-option span:first-child {
+.char-option span:first-of-type {
   font-weight: 800;
   font-size: 12px;
-  color: #f2efe9;
   letter-spacing: 0.04em;
+  color: #f2efe9;
 }
 
 .occ-desc {
-  font-size: 8px;
-  color: #8aa094;
   margin-top: 2px;
-  line-height: 1.2;
+  color: #93a49a;
+  font-size: 8px;
+  line-height: 1.25;
 }
 
 /* Multiplayer online counter */
@@ -2452,7 +2560,10 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
     -webkit-overflow-scrolling: touch;
   }
 
-  .auth-card,
+  .auth-card {
+    border-radius: 20px;
+  }
+
   .settings-card {
     border-radius: 16px;
   }
@@ -2528,6 +2639,10 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
     padding: 20px 16px 24px;
   }
 
+  .persona-card {
+    padding: 20px 14px 22px;
+  }
+
   .auth-header h2 {
     font-size: 22px;
   }
@@ -2542,10 +2657,12 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
   }
 
   .avatar-img {
-    font-size: 28px;
+    width: 34px;
+    height: 34px;
+    font-size: 18px;
   }
 
-  .avatar-option span,
+  .avatar-option > span:last-child,
   .input-group label,
   .section-label,
   .auth-kicker,
@@ -2577,7 +2694,7 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
     font-size: 30px;
   }
 
-  .char-option span:first-child {
+  .char-option span:first-of-type {
     font-size: 13px;
   }
 
@@ -2661,5 +2778,71 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
   .flow-skip-btn {
     min-height: 28px;
     padding: 5px 10px;
+  }
+
+  .auth-card {
+    max-height: calc(100dvh - 16px);
+    padding: 14px 18px 16px;
+    border-radius: 18px;
+  }
+
+  .auth-header {
+    margin-bottom: 10px;
+  }
+
+  .auth-header h2 {
+    font-size: 20px;
+  }
+
+  .auth-subtitle {
+    display: none;
+  }
+
+  .auth-tabs {
+    margin-bottom: 8px;
+  }
+
+  .auth-form.is-active {
+    padding: 9px;
+  }
+
+  .input-group {
+    margin-bottom: 7px;
+  }
+
+  .input-group input {
+    min-height: 38px;
+    padding: 7px 10px;
+  }
+
+  .avatar-section,
+  .char-section {
+    margin-bottom: 9px;
+  }
+
+  .avatar-option {
+    min-height: 56px;
+    padding: 5px 3px;
+  }
+
+  .avatar-img {
+    width: 30px;
+    height: 30px;
+    font-size: 16px;
+  }
+
+  .char-option {
+    min-height: 70px;
+    padding: 6px;
+  }
+
+  .char-option-icon {
+    font-size: 20px;
+  }
+
+  .flow-btn-full {
+    min-height: 40px;
+    padding: 8px;
+    margin-top: 8px;
   }
 }

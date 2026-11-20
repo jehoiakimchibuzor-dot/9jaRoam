@@ -254,33 +254,12 @@
         </div>
       </div>
 
-      <div id="auth-screen" class="flow-overlay">
+      <div id="auth-screen" class="flow-overlay auth-overlay">
         <div class="auth-card">
           <div class="auth-header">
-            <div class="auth-kicker">9JA ROAM · KANO PROFILE</div>
-            <h2>IDENTITY & PROFILE</h2>
-          </div>
-
-          <div class="avatar-section">
-            <div class="avatar-label">CHOOSE YOUR AVATAR</div>
-            <div class="avatar-grid">
-              <div class="avatar-option is-selected" data-avatar="street-rebel">
-                <div class="avatar-img">👑</div>
-                <span>Rebel</span>
-              </div>
-              <div class="avatar-option" data-avatar="kano-maverick">
-                <div class="avatar-img">⚡</div>
-                <span>Maverick</span>
-              </div>
-              <div class="avatar-option" data-avatar="city-boss">
-                <div class="avatar-img">💼</div>
-                <span>Boss</span>
-              </div>
-              <div class="avatar-option" data-avatar="hustler-pro">
-                <div class="avatar-img">🔥</div>
-                <span>Hustler</span>
-              </div>
-            </div>
+            <div class="auth-kicker">9JA ROAM · KANO ACCESS</div>
+            <h2>ENTER THE CITY</h2>
+            <p class="auth-subtitle">Choose how you want to play. Your persona comes next.</p>
           </div>
 
           <div class="auth-tabs">
@@ -296,7 +275,7 @@
               <label for="guest-name-input">PLAYER HANDLE</label>
               <input id="guest-name-input" type="text" placeholder="e.g. Kano Roamer" value="Kano Roamer" />
             </div>
-            <button id="btn-start-guest" type="button" class="flow-btn flow-btn-full">START GAME (GUEST)</button>
+            <button id="btn-start-guest" type="button" class="flow-btn flow-btn-full">CONTINUE AS GUEST</button>
           </div>
 
           <div id="form-login" class="auth-form">
@@ -308,7 +287,7 @@
               <label for="login-pass-input">PASSWORD</label>
               <input id="login-pass-input" type="password" placeholder="Enter password" />
             </div>
-            <button id="btn-submit-login" type="button" class="flow-btn flow-btn-full">LOG IN & PLAY</button>
+            <button id="btn-submit-login" type="button" class="flow-btn flow-btn-full">LOG IN & CONTINUE</button>
             <div class="auth-divider"><span>OR</span></div>
             <button id="btn-google-login" type="button" class="flow-btn flow-btn-full flow-btn-google">CONTINUE WITH GOOGLE</button>
           </div>
@@ -326,7 +305,7 @@
               <label for="reg-pass-input">CREATE PASSWORD</label>
               <input id="reg-pass-input" type="password" placeholder="Min 4 characters" />
             </div>
-            <button id="btn-submit-register" type="button" class="flow-btn flow-btn-full">REGISTER & PLAY</button>
+            <button id="btn-submit-register" type="button" class="flow-btn flow-btn-full">CREATE ACCOUNT & CONTINUE</button>
             <div class="auth-divider"><span>OR</span></div>
             <button id="btn-google-register" type="button" class="flow-btn flow-btn-full flow-btn-google">CONTINUE WITH GOOGLE</button>
           </div>
@@ -342,12 +321,36 @@
         <button id="install-banner-close" type="button" aria-label="Dismiss install prompt">×</button>
       </div>
 
-      <!-- Character Creation Screen -->
-      <div id="character-screen" class="flow-overlay">
-        <div class="auth-card">
+      <!-- Character Creation Screen — shown only after sign-in -->
+      <div id="character-screen" class="flow-overlay auth-overlay">
+        <div class="auth-card persona-card">
           <div class="auth-header">
-            <div class="auth-kicker">CREATE YOUR CHARACTER</div>
-            <h2>WHO WILL YOU BE?</h2>
+            <div class="auth-kicker">AFTER SIGN-IN · YOUR PERSONA</div>
+            <h2>BUILD YOUR PERSONA</h2>
+            <p class="auth-subtitle">Set your look and street identity before you enter Kano.</p>
+          </div>
+
+          <!-- Avatar -->
+          <div class="avatar-section">
+            <div class="avatar-label">AVATAR STYLE</div>
+            <div class="avatar-grid">
+              <button id="char-avatar-rebel" class="avatar-option is-selected" type="button" data-avatar="street-rebel">
+                <span class="avatar-img">♛</span>
+                <span>Rebel</span>
+              </button>
+              <button id="char-avatar-maverick" class="avatar-option" type="button" data-avatar="kano-maverick">
+                <span class="avatar-img">ϟ</span>
+                <span>Maverick</span>
+              </button>
+              <button id="char-avatar-boss" class="avatar-option" type="button" data-avatar="city-boss">
+                <span class="avatar-img">◆</span>
+                <span>Boss</span>
+              </button>
+              <button id="char-avatar-hustler" class="avatar-option" type="button" data-avatar="hustler-pro">
+                <span class="avatar-img">✦</span>
+                <span>Hustler</span>
+              </button>
+            </div>
           </div>
 
           <!-- Gender -->
@@ -404,7 +407,7 @@
 
           <div id="char-error-msg" class="auth-error"></div>
 
-          <button id="btn-create-character" type="button" class="flow-btn flow-btn-full">START LIFE IN KANO</button>
+          <button id="btn-create-character" type="button" class="flow-btn flow-btn-full">ENTER KANO</button>
         </div>
       </div>
 

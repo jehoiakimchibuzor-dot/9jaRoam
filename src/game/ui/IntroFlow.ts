@@ -139,7 +139,6 @@ export class IntroFlow {
     this.authEl.classList.remove('is-hidden');
     this.authEl.classList.add('is-active');
     this.setupAuthTabs();
-    this.setupAvatarPicker();
     this.setupAuthForms();
   }
 
@@ -163,17 +162,6 @@ export class IntroFlow {
     tabGuest?.addEventListener('click', () => activateTab(tabGuest, formGuest));
     tabLogin?.addEventListener('click', () => activateTab(tabLogin, formLogin));
     tabRegister?.addEventListener('click', () => activateTab(tabRegister, formRegister));
-  }
-
-  private setupAvatarPicker(): void {
-    const avatars = document.querySelectorAll('.avatar-option');
-    avatars.forEach((opt) => {
-      opt.addEventListener('click', () => {
-        avatars.forEach((a) => a.classList.remove('is-selected'));
-        opt.classList.add('is-selected');
-        this.selectedAvatar = (opt as HTMLElement).dataset.avatar ?? 'street-rebel';
-      });
-    });
   }
 
   private setupAuthForms(): void {
@@ -276,8 +264,27 @@ export class IntroFlow {
   }
 
   private setupCharacterSelection(user: UserProfile): void {
+    this.selectedAvatar = user.avatar || 'street-rebel';
     this.selectedGender = user.gender;
     this.selectedOccupation = user.occupation;
+
+    const avatarOptions = document.querySelectorAll('.avatar-option[data-avatar]');
+    avatarOptions.forEach((opt) => {
+      const avatar = (opt as HTMLElement).dataset.avatar;
+      const isSelected = avatar === this.selectedAvatar;
+      opt.classList.toggle('is-selected', isSelected);
+      opt.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+
+      opt.addEventListener('click', () => {
+        avatarOptions.forEach((o) => {
+          o.classList.remove('is-selected');
+          o.setAttribute('aria-pressed', 'false');
+        });
+        opt.classList.add('is-selected');
+        opt.setAttribute('aria-pressed', 'true');
+        this.selectedAvatar = avatar ?? 'street-rebel';
+      });
+    });
 
     const genderOptions = document.querySelectorAll('.char-option[data-gender]');
     genderOptions.forEach((opt) => {
@@ -320,6 +327,7 @@ export class IntroFlow {
       clearError();
 
       const updatedUser = this.authService.updateCharacter({
+        avatar: this.selectedAvatar,
         gender: this.selectedGender,
         occupation: this.selectedOccupation,
       });
