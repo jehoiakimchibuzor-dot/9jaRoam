@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { Input } from './Input';
 import { Player } from './entities/Player';
 import {
+  appearanceFromProfile,
+  DEFAULT_PLAYER_APPEARANCE,
   SHIRT_COLORS,
   SHOE_COLORS,
   SKIN_TONES,
@@ -283,6 +285,7 @@ interface ProgressSaveData {
   vehicleFuel: Record<string, number>;
   weapons?: WeaponInventorySnapshot;
   appearance?: PlayerAppearance;
+  appearanceCustomized?: boolean;
   occupationBonusKey?: string;
   vehicleStates?: Record<string, SavedVehicleState>;
   resume?: SavedResumeState;
@@ -389,6 +392,7 @@ export class Game {
   private progressStorageAvailable = true;
   private progressAutosaveTimer = 0;
   private resumeRestored = false;
+  private appearanceCustomized = false;
   private fuelWarned = false;
   private wanted = 0;
   private wantedDelay = 0;
@@ -983,6 +987,16 @@ export class Game {
   /** Attach the authenticated profile before the first frame runs. */
   setUser(user: UserProfile): void {
     this.user = user;
+
+    // The persona choices are real look settings now, not just profile tags.
+    // A look edited later in Yemi's Style Corner stays untouched.
+    if (!this.appearanceCustomized) {
+      const profileLook = appearanceFromProfile(user.avatar, user.gender, user.occupation);
+      if (JSON.stringify(this.player.appearance) !== JSON.stringify(profileLook)) {
+        this.player.setAppearance(profileLook);
+        this.saveProgress();
+      }
+    }
 
     // Presence must be refreshed on every profile change. Restored progress can
     // make the occupation bonus key match on later loads, but the player still
@@ -3506,6 +3520,7 @@ export class Game {
       label: `${this.player.appearance[field] === choice.value ? '✓ ' : ''}${choice.label}`,
       action: () => {
         this.player.setAppearance({ ...this.player.appearance, [field]: choice.value });
+        this.appearanceCustomized = true;
         this.saveProgress();
         this.openPlayerWardrobe();
       }
@@ -3748,6 +3763,9 @@ export class Game {
       if (data.appearance !== undefined && !isPlayerAppearance(data.appearance)) {
         throw new Error('Stored player appearance is invalid');
       }
+      if (data.appearanceCustomized !== undefined && typeof data.appearanceCustomized !== 'boolean') {
+        throw new Error('Stored appearance customisation flag is invalid');
+      }
       if (!Array.isArray(data.lootedIds)) throw new Error('Stored loot state is invalid');
       if (data.vehicleFuel !== undefined && (!data.vehicleFuel || typeof data.vehicleFuel !== 'object')) {
         throw new Error('Stored vehicle fuel state is invalid');
@@ -3760,6 +3778,12 @@ export class Game {
       this.occupationBonusKey = data.occupationBonusKey ?? '';
       this.loanBalance = loanBalance;
       if (data.appearance) this.player.setAppearance(data.appearance);
+      // Older saves have no flag; only preserve their look if it was clearly
+      // edited away from the old default. Otherwise let the profile presets in.
+      this.appearanceCustomized = typeof data.appearanceCustomized === 'boolean'
+        ? data.appearanceCustomized
+        : Boolean(data.appearance) &&
+          JSON.stringify(data.appearance) !== JSON.stringify(DEFAULT_PLAYER_APPEARANCE);
       this.looted = new Set(data.lootedIds.filter((id): id is string => typeof id === 'string'));
       this.missions.restore(data.missions);
       if (data.weapons !== undefined) this.weapons.restore(data.weapons);
@@ -3822,6 +3846,7 @@ export class Game {
       missions: this.missions.snapshot(),
       lootedIds: [...this.looted],
       appearance: this.player.appearance,
+      appearanceCustomized: this.appearanceCustomized,
       weapons: this.weapons.snapshot(),
       occupationBonusKey: this.occupationBonusKey,
       vehicleFuel: this.drivableVehicles.reduce<Record<string, number>>((saved, vehicle) => {

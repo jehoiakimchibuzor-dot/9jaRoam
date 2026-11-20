@@ -2197,6 +2197,69 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
   max-width: 520px;
 }
 
+.persona-preview {
+  position: relative;
+  height: 188px;
+  margin-bottom: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(231, 196, 119, 0.22);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(231, 196, 119, 0.16), transparent 42%),
+    linear-gradient(180deg, rgba(14, 23, 27, 0.88), rgba(6, 10, 13, 0.72));
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.34),
+    0 1px 0 rgba(255, 255, 255, 0.1) inset;
+}
+
+.persona-preview::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px) 0 0 / 26px 26px,
+    linear-gradient(0deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px) 0 0 / 26px 26px;
+  mask-image: linear-gradient(to bottom, transparent, #000 35%, transparent 92%);
+  pointer-events: none;
+}
+
+.persona-preview canvas {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.preview-tag,
+.preview-hint {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.preview-tag {
+  top: 10px;
+  left: 10px;
+  padding: 5px 9px;
+  border: 1px solid rgba(231, 196, 119, 0.42);
+  border-radius: 999px;
+  background: rgba(8, 12, 16, 0.68);
+  color: #f0d28a;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+}
+
+.preview-hint {
+  right: 10px;
+  bottom: 8px;
+  left: 10px;
+  color: #9faea5;
+  font-size: 9px;
+  text-align: center;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
+}
+
 .auth-header {
   text-align: center;
   margin-bottom: 16px;
@@ -2764,6 +2827,15 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
 
   .persona-card {
     padding: 20px 14px 22px;
+  }
+
+  .persona-preview {
+    height: 158px;
+    margin-bottom: 12px;
+  }
+
+  .preview-hint {
+    font-size: 8px;
   }
 
   .auth-header h2 {

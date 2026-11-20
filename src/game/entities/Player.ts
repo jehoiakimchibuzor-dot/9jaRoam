@@ -14,6 +14,46 @@ export interface PlayerMoveInput {
   sprint: boolean;
 }
 
+/** Shared by the in-game player and the persona-screen live preview. */
+export function createPlayerCharacter(appearance: PlayerAppearance): CharacterRig {
+  const northernCap = appearance.headwear === 'northern-cap';
+  const headwrap = appearance.headwear === 'headwrap';
+  const reflectiveVest = appearance.outfit === 'agbero-vest';
+  return createCharacter(
+    {
+      skin: appearance.skinTone,
+      shirt: appearance.shirtColor,
+      pants: appearance.pantsColor,
+      shoes: appearance.shoesColor,
+      accent: 0xf2f0e6,
+      hair: 0x14100d,
+      chain: 0xd9b44a
+    },
+    1.82,
+    {
+      build: 1.02,
+      bodyType: appearance.bodyType,
+      outfit: appearance.outfit,
+      footwear: appearance.footwear,
+      sleeves: appearance.outfit === 'senator' ? 'long' : 'short',
+      bottoms: appearance.bottoms,
+      hairStyle: appearance.hairStyle,
+      cap: appearance.headwear === 'snapback' || northernCap,
+      capStyle: northernCap ? 'northern' : 'snapback',
+      capColor: northernCap ? 0xe5dfcf : 0x145b40,
+      headwrap,
+      headwrapColor: 0xd4a12f,
+      beard: appearance.facialHair === 'beard',
+      stubble: appearance.facialHair === 'stubble',
+      glasses: appearance.glasses,
+      vest: reflectiveVest,
+      reflectiveVest,
+      vestColor: 0xd7d33c,
+      print: appearance.outfit === 'graphic-tee' ? 0x202126 : undefined
+    }
+  );
+}
+
 export class Player {
   rig: CharacterRig;
   readonly group = new THREE.Group();
@@ -57,43 +97,9 @@ export class Player {
   }
 
   private createRig(appearance: PlayerAppearance): CharacterRig {
-    const northernCap = appearance.headwear === 'northern-cap';
-    const headwrap = appearance.headwear === 'headwrap';
-    const reflectiveVest = appearance.outfit === 'agbero-vest';
-    return createCharacter(
-      {
-        skin: appearance.skinTone,
-        shirt: appearance.shirtColor,
-        pants: appearance.pantsColor,
-        shoes: appearance.shoesColor,
-        accent: 0xf2f0e6,
-        hair: 0x14100d,
-        chain: 0xd9b44a
-      },
-      1.82,
-      {
-        build: 1.02,
-        bodyType: appearance.bodyType,
-        outfit: appearance.outfit,
-        footwear: appearance.footwear,
-        sleeves: appearance.outfit === 'senator' ? 'long' : 'short',
-        bottoms: appearance.bottoms,
-        hairStyle: appearance.hairStyle,
-        cap: appearance.headwear === 'snapback' || northernCap,
-        capStyle: northernCap ? 'northern' : 'snapback',
-        capColor: northernCap ? 0xe5dfcf : 0x145b40,
-        headwrap,
-        headwrapColor: 0xd4a12f,
-        beard: appearance.facialHair === 'beard',
-        stubble: appearance.facialHair === 'stubble',
-        glasses: appearance.glasses,
-        vest: reflectiveVest,
-        reflectiveVest,
-        vestColor: 0xd7d33c,
-        print: appearance.outfit === 'graphic-tee' ? 0x202126 : undefined
-      }
-    );
+    return createPlayerCharacter(appearance);
   }
+
 
   setAppearance(appearance: PlayerAppearance): void {
     const current = this.appearance;

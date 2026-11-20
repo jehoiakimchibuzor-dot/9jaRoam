@@ -1,4 +1,5 @@
 import { AuthService, UserProfile } from '../systems/AuthService';
+import { CharacterPreview } from './CharacterPreview';
 
 export class IntroFlow {
   private authService = AuthService.getInstance();
@@ -9,6 +10,7 @@ export class IntroFlow {
   private selectedAvatar = 'street-rebel';
   private selectedGender: 'male' | 'female' = 'male';
   private selectedOccupation = 'Hustler';
+  private characterPreview: CharacterPreview | null = null;
   private currentSlideIndex = 0;
 
   constructor(private onComplete: (user: UserProfile) => void) {}
@@ -265,6 +267,21 @@ export class IntroFlow {
     this.charEl.classList.remove('is-hidden');
     this.charEl.classList.add('is-active');
     this.setupCharacterSelection(user);
+
+    const previewCanvas = document.getElementById('character-preview-canvas');
+    if (previewCanvas instanceof HTMLCanvasElement) {
+      if (!this.characterPreview) this.characterPreview = new CharacterPreview(previewCanvas);
+      this.characterPreview.start();
+      this.refreshCharacterPreview();
+    }
+  }
+
+  private refreshCharacterPreview(): void {
+    this.characterPreview?.setProfile(
+      this.selectedAvatar,
+      this.selectedGender,
+      this.selectedOccupation
+    );
   }
 
   private setupCharacterSelection(user: UserProfile): void {
@@ -287,6 +304,7 @@ export class IntroFlow {
         opt.classList.add('is-selected');
         opt.setAttribute('aria-pressed', 'true');
         this.selectedAvatar = avatar ?? 'street-rebel';
+        this.refreshCharacterPreview();
       });
     });
 
@@ -302,6 +320,7 @@ export class IntroFlow {
         genderOptions.forEach((o) => o.classList.remove('is-selected'));
         opt.classList.add('is-selected');
         this.selectedGender = (gender as 'male' | 'female');
+        this.refreshCharacterPreview();
       });
     });
 
@@ -317,6 +336,7 @@ export class IntroFlow {
         occOptions.forEach((o) => o.classList.remove('is-selected'));
         opt.classList.add('is-selected');
         this.selectedOccupation = occ ?? 'Hustler';
+        this.refreshCharacterPreview();
       });
     });
 
@@ -341,6 +361,8 @@ export class IntroFlow {
   }
 
   private complete(user: UserProfile): void {
+    this.characterPreview?.stop();
+    this.characterPreview = null;
     this.charEl?.classList.remove('is-active');
     this.charEl?.classList.add('is-hidden');
     this.onComplete(user);

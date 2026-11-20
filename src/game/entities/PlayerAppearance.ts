@@ -71,6 +71,124 @@ export const SKIN_TONES = [
   { label: 'Bronze', value: 0xa87a52 }
 ] as const;
 
+/**
+ * The persona cards used to be cosmetic only: everyone spawned in the same
+ * green tee. These presets turn the avatar/gender/occupation choice into the
+ * actual in-game outfit while still using only the wardrobe's validated colours.
+ */
+const PROFILE_LOOKS: Record<string, PlayerAppearance> = {
+  'street-rebel': {
+    bodyType: 'muscular',
+    outfit: 'graphic-tee',
+    shirtColor: 0x202126,
+    pantsColor: 0x22304a,
+    bottoms: 'long',
+    footwear: 'sneakers',
+    shoesColor: 0xe7e3d8,
+    skinTone: 0x8a5a3a,
+    headwear: 'snapback',
+    hairStyle: 'fade',
+    facialHair: 'beard',
+    glasses: false
+  },
+  'kano-maverick': {
+    bodyType: 'athletic',
+    outfit: 'kaftan',
+    shirtColor: 0xd4a12f,
+    pantsColor: 0x8a7658,
+    bottoms: 'long',
+    footwear: 'slides',
+    shoesColor: 0x5a4630,
+    skinTone: 0x7a4a28,
+    headwear: 'northern-cap',
+    hairStyle: 'braids',
+    facialHair: 'stubble',
+    glasses: false
+  },
+  'city-boss': {
+    bodyType: 'heavy',
+    outfit: 'senator',
+    shirtColor: 0x8c2935,
+    pantsColor: 0x18191c,
+    bottoms: 'long',
+    footwear: 'sneakers',
+    shoesColor: 0x18191c,
+    skinTone: 0x8a5a3a,
+    headwear: 'northern-cap',
+    hairStyle: 'bald',
+    facialHair: 'beard',
+    glasses: true
+  },
+  'hustler-pro': {
+    bodyType: 'muscular',
+    outfit: 'agbero-vest',
+    shirtColor: 0x176b4a,
+    pantsColor: 0x292d35,
+    bottoms: 'shorts',
+    footwear: 'sneakers',
+    shoesColor: 0x8a2f2f,
+    skinTone: 0x6b3f22,
+    headwear: 'snapback',
+    hairStyle: 'afro',
+    facialHair: 'stubble',
+    glasses: false
+  }
+};
+
+export function appearanceFromProfile(
+  avatar: string,
+  gender: 'male' | 'female',
+  occupation: string
+): PlayerAppearance {
+  const look: PlayerAppearance = { ...(PROFILE_LOOKS[avatar] ?? PROFILE_LOOKS['street-rebel']) };
+
+  if (gender === 'female') {
+    if (look.bodyType === 'heavy') look.bodyType = 'average';
+    if (look.bodyType === 'muscular') look.bodyType = 'athletic';
+    look.facialHair = 'clean';
+    if (look.headwear === 'snapback') look.headwear = 'headwrap';
+    if (look.hairStyle === 'fade') look.hairStyle = 'braids';
+  }
+
+  switch (occupation) {
+    case 'Police':
+      look.outfit = 'senator';
+      look.shirtColor = 0x285c9a;
+      look.pantsColor = 0x18191c;
+      look.headwear = 'none';
+      look.glasses = false;
+      break;
+    case 'Pilot':
+      look.outfit = 'senator';
+      look.shirtColor = 0xe8e4dc;
+      look.pantsColor = 0x22304a;
+      look.headwear = 'northern-cap';
+      break;
+    case 'Driver':
+      look.outfit = 'graphic-tee';
+      look.shirtColor = 0x285c9a;
+      look.headwear = 'snapback';
+      break;
+    case 'Mechanic':
+      look.outfit = 'agbero-vest';
+      look.shirtColor = 0xd4a12f;
+      look.headwear = 'none';
+      break;
+    case 'Thief':
+      look.shirtColor = 0x202126;
+      look.pantsColor = 0x18191c;
+      look.headwear = 'none';
+      look.hairStyle = 'bald';
+      look.glasses = true;
+      break;
+    default:
+      break;
+  }
+
+  if (gender === 'female' && look.headwear === 'none') look.headwear = 'headwrap';
+  return look;
+}
+
 const BODY_TYPES: readonly PlayerBodyType[] = ['average', 'athletic', 'muscular', 'heavy'];
 const OUTFITS: readonly PlayerOutfit[] = ['graphic-tee', 'senator', 'kaftan', 'agbero-vest'];
 const FOOTWEAR: readonly PlayerFootwear[] = ['sneakers', 'slides'];

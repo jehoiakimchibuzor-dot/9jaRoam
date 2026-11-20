@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { appearanceFromProfile } from './PlayerAppearance';
 import type { RemotePlayerState } from '../systems/MultiplayerService';
 
 interface AvatarEntry {
@@ -139,10 +140,18 @@ export class RemotePlayers {
     group.position.set(player.x, player.y, player.z);
     group.rotation.y = player.yaw;
 
-    const color = colorFor(player.avatar);
-    const bodyMaterial = new THREE.MeshLambertMaterial({ color, flatShading: true });
-    const skinMaterial = new THREE.MeshLambertMaterial({ color: 0xc98d63, flatShading: true });
-    const darkMaterial = new THREE.MeshLambertMaterial({ color: 0x1d2530, flatShading: true });
+    // Remote avatars stay deliberately cheap, but now wear the same persona
+    // colours as the local character instead of a random name-based shirt.
+    const look = appearanceFromProfile(
+      player.avatar,
+      player.gender === 'female' ? 'female' : 'male',
+      player.occupation
+    );
+    const accent = colorFor(player.avatar);
+    const bodyMaterial = new THREE.MeshLambertMaterial({ color: look.shirtColor, flatShading: true });
+    const skinMaterial = new THREE.MeshLambertMaterial({ color: look.skinTone, flatShading: true });
+    const darkMaterial = new THREE.MeshLambertMaterial({ color: look.pantsColor, flatShading: true });
+    const accentMaterial = new THREE.MeshLambertMaterial({ color: accent, flatShading: true });
 
     const legs = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.65, 0.26), darkMaterial);
     legs.position.y = 0.34;
@@ -155,6 +164,10 @@ export class RemotePlayers {
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 10, 8), skinMaterial);
     head.position.y = 1.72;
     group.add(head);
+
+    const belt = new THREE.Mesh(new THREE.BoxGeometry(0.43, 0.08, 0.31), accentMaterial);
+    belt.position.y = 0.74;
+    group.add(belt);
 
     const { sprite, canvas, texture } = makeLabel();
     group.add(sprite);
