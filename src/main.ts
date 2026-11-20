@@ -1,5 +1,6 @@
 import './style.css';
 import { Game } from './game/Game';
+import { IntroFlow } from './game/ui/IntroFlow';
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const params = new URLSearchParams(window.location.search);
@@ -19,7 +20,14 @@ if (params.has('diag')) {
   if (diag) diag.style.display = 'none';
 }
 
-game.start();
+// ── Start with auth / onboarding flow, then launch game ──
+const intro = new IntroFlow((user) => {
+  console.log('9ja Roam · authenticated as:', user.username, user.isGuest ? '(guest)' : '');
+  game.setUser(user);
+  game.start();
+});
+
+intro.start();
 
 interface RoamDebug {
   game: Game;

@@ -70,6 +70,7 @@ import { CombatCallbacks, CombatHit } from './systems/CombatTypes';
 import { createHealth, damageHealth, healHealth, Health, restoreHealth } from './systems/Health';
 import { clamp, pushOutColliders, rayWallDistance } from './systems/Physics';
 import { GameAudio } from './systems/GameAudio';
+import type { UserProfile } from './systems/AuthService';
 import { IS_ANDROID } from './platform';
 
 type Mode = 'foot' | 'drive' | 'entering' | 'exiting' | 'falling';
@@ -238,6 +239,7 @@ interface ProgressSaveData {
   vehicleFuel: Record<string, number>;
   weapons?: WeaponInventorySnapshot;
   appearance?: PlayerAppearance;
+  occupationBonusKey?: string;
 }
 
 const CAR_ACCEL = 8.5;
@@ -306,6 +308,8 @@ export class Game {
   private deathReason = '';
   private explosions: Explosion[] = [];
   private money = 150;
+  private user: UserProfile | null = null;
+  private occupationBonusKey = '';
   private bankBalance = STARTING_BANK_BALANCE;
   private loanBalance = 0;
   private bankStorageAvailable = true;
@@ -884,6 +888,71 @@ export class Game {
     window.addEventListener('resize', () => this.onResize());
 
     this.setHint('Drag MOVE to walk \u00b7 every button is labelled \u00b7 tap PAUSE for the full controls');
+  }
+
+  /** Attach the authenticated profile before the first frame runs. */
+  setUser(user: UserProfile): void {
+    this.user = user;
+
+    const hpMultiplier = this.vehicleHpMultiplier();
+    for (const car of this.drivableVehicles) {
+      const target = Math.round(this.vehicleHealthCap(car) * hpMultiplier);
+      if (car.maxHealth === target) continue;
+      const ratio = car.maxHealth ? (car.health ?? car.maxHealth) / car.maxHealth : 1;
+      car.maxHealth = target;
+      car.health = clamp(Math.round(target * ratio), 0, target);
+    }
+
+    const key = `${user.id}:${user.occupation}`;
+    if (this.occupationBonusKey === key) return;
+
+    if (user.occupation === 'Hustler') {
+      this.money += 100;
+      this.showToast('HUSTLER BONUS · +₦100');
+    }
+
+    this.occupationBonusKey = key;
+    this.saveProgress();
+  }
+
+  private get occupation(): string {
+    return this.user?.occupation ?? 'Hustler';
+  }
+
+  private fuelPricePerUnit(): number {
+    if (this.occupation === 'Driver') return FUEL_PRICE_PER_UNIT * 0.85;
+    if (this.occupation === 'Pilot') return FUEL_PRICE_PER_UNIT * 0.75;
+    return FUEL_PRICE_PER_UNIT;
+  }
+
+  private fuelCost(litres: number): number {
+    return Math.ceil(litres * this.fuelPricePerUnit());
+  }
+
+  private affordableFuelLitres(): number {
+    return Math.floor(this.money / this.fuelPricePerUnit());
+  }
+
+  private fuelPriceLabel(): string {
+    return this.fuelPricePerUnit().toLocaleString('en-NG', { maximumFractionDigits: 2 });
+  }
+
+  private repairPrice(): number {
+    return this.occupation === 'Mechanic' ? 120 : 150;
+  }
+
+  private vehicleHpMultiplier(): number {
+    if (this.occupation === 'Driver') return 1.15;
+    if (this.occupation === 'Mechanic') return 1.1;
+    return 1;
+  }
+
+  private wantedDecayMultiplier(): number {
+    return this.occupation === 'Police' ? 1.3 : 1;
+  }
+
+  private missionReward(amount: number): number {
+    return this.occupation === 'Thief' ? Math.round(amount * 1.4) : amount;
   }
 
   start(): void {
@@ -1913,10 +1982,10 @@ export class Game {
       this.setHint('Tank is already full');
       return;
     }
-    const affordable = Math.min(missing, Math.floor(this.money / FUEL_PRICE_PER_UNIT));
+    const affordable = Math.min(missing, this.affordableFuelLitres());
     const options: DialogueOption[] = [];
     if (affordable > 0) {
-      const price = affordable * FUEL_PRICE_PER_UNIT;
+      const price = this.fuelCost(affordable);
       options.push({
         label: affordable === missing
           ? `FILL TANK · ₦${price.toLocaleString('en-NG')}`
@@ -1926,20 +1995,20 @@ export class Game {
     }
     const topUp = Math.min(25, missing);
     if (topUp > 0 && topUp < affordable) {
-      const price = topUp * FUEL_PRICE_PER_UNIT;
+      const price = this.fuelCost(topUp);
       options.push({
         label: `ADD ${topUp} L · ₦${price.toLocaleString('en-NG')}`,
         action: () => this.purchaseFuel(vehicle, topUp)
       });
     }
     if (options.length === 0) {
-      this.setHint(`Fuel costs ₦${FUEL_PRICE_PER_UNIT} per litre · earn more cash to refuel`);
+      this.setHint(`Fuel costs ₦${this.fuelPriceLabel()} per litre · earn more cash to refuel`);
       return;
     }
     options.push({ label: 'LEAVE', action: () => this.closeDialogue() });
     this.showDialogue(
       'NNPC Filling Station',
-      `Fuel: ${Math.floor(fuel)} / ${capacity} L\nPrice: ₦${FUEL_PRICE_PER_UNIT} per litre\nChoose a fill amount.`,
+      `Fuel: ${Math.floor(fuel)} / ${capacity} L\nPrice: ₦${this.fuelPriceLabel()} per litre\nChoose a fill amount.`,
       options
     );
   }
@@ -1947,7 +2016,7 @@ export class Game {
   private purchaseFuel(vehicle: VehicleRig, requestedAmount: number): void {
     const capacity = vehicle.maxFuel ?? 100;
     const current = clamp(vehicle.fuel ?? capacity, 0, capacity);
-    const affordable = Math.floor(this.money / FUEL_PRICE_PER_UNIT);
+    const affordable = this.affordableFuelLitres();
     const amount = Math.min(
       Math.max(0, requestedAmount),
       Math.ceil(capacity - current),
@@ -1957,7 +2026,7 @@ export class Game {
       this.setHint('Not enough cash to buy fuel');
       return;
     }
-    const price = amount * FUEL_PRICE_PER_UNIT;
+    const price = this.fuelCost(amount);
     if (!this.spend(price)) return;
     vehicle.fuel = Math.min(capacity, current + amount);
     this.fuelWarned = false;
@@ -1975,7 +2044,7 @@ export class Game {
       this.setHint('That vehicle already has a full tank');
       return;
     }
-    const price = amount * FUEL_PRICE_PER_UNIT;
+    const price = this.fuelCost(amount);
     this.showDialogue(
       'NNPC Filling Station',
       `Jerrycan: ${amount} L\nPrice: \u20a6${price.toLocaleString('en-NG')}\n\nRefill the nearby vehicle?`,
@@ -2027,7 +2096,8 @@ export class Game {
       this.setHint('Your vehicle is already in good condition');
       return;
     }
-    if (!this.spend(150)) return;
+    const repairCost = this.repairPrice();
+    if (!this.spend(repairCost)) return;
     vehicle.health = maxHealth;
     vehicle.burning = 0;
     vehicle.wrecked = false;
@@ -2039,7 +2109,7 @@ export class Game {
     if (wreckSmoke) wreckSmoke.visible = false;
     this.audio.pickup();
     this.showToast('GARAGE SERVICE COMPLETE · VEHICLE REPAIRED');
-    this.setHint('Vehicle repaired · ₦150 paid');
+    this.setHint(`Vehicle repaired · ₦${repairCost} paid`);
   }
 
   private beginEnter(vehicle: VehicleRig): void {
@@ -3526,8 +3596,12 @@ export class Game {
       if (data.vehicleFuel !== undefined && (!data.vehicleFuel || typeof data.vehicleFuel !== 'object')) {
         throw new Error('Stored vehicle fuel state is invalid');
       }
+      if (data.occupationBonusKey !== undefined && typeof data.occupationBonusKey !== 'string') {
+        throw new Error('Stored occupation bonus state is invalid');
+      }
 
       this.money = data.money;
+      this.occupationBonusKey = data.occupationBonusKey ?? '';
       this.loanBalance = loanBalance;
       if (data.appearance) this.player.setAppearance(data.appearance);
       this.looted = new Set(data.lootedIds.filter((id): id is string => typeof id === 'string'));
@@ -3557,6 +3631,7 @@ export class Game {
       lootedIds: [...this.looted],
       appearance: this.player.appearance,
       weapons: this.weapons.snapshot(),
+      occupationBonusKey: this.occupationBonusKey,
       vehicleFuel: this.drivableVehicles.reduce<Record<string, number>>((saved, vehicle) => {
         const id = vehicle.group.userData.saveId;
         if (typeof id === 'string') saved[id] = vehicle.fuel ?? vehicle.maxFuel ?? 100;
@@ -3642,7 +3717,8 @@ export class Game {
   }
 
   private completeMission(def: MissionDef): void {
-    this.money += def.rewardMoney;
+    const reward = this.missionReward(def.rewardMoney);
+    this.money += reward;
     if (def.rewardWeapon) {
       const rewardAmmo = def.rewardAmmo ?? 30;
       this.weapons.unlock(def.rewardWeapon, undefined, 0);
@@ -3656,7 +3732,7 @@ export class Game {
     }
     this.saveProgress();
     this.audio.pickup();
-    this.showToast(`MISSION COMPLETE \u00b7 ${def.title} \u00b7 +\u20a6${def.rewardMoney}`);
+    this.showToast(`MISSION COMPLETE \u00b7 ${def.title} \u00b7 +\u20a6${reward}`);
     this.setHint(`Mission complete: ${def.title}`);
   }
 
@@ -3877,7 +3953,8 @@ export class Game {
 
     this.wantedDelay = Math.max(0, this.wantedDelay - dt);
     if (this.wantedDelay <= 0 && !this.police.isSeen && this.police.isCold) {
-      const rate = this.police.isLost ? 0.2 : 0.075;
+      const baseRate = this.police.isLost ? 0.2 : 0.075;
+      const rate = baseRate * this.wantedDecayMultiplier();
       this.wanted = Math.max(0, this.wanted - dt * rate);
     }
   }

@@ -241,17 +241,23 @@
 
           <div id="form-login" class="auth-form">
             <div class="input-group">
-              <label for="login-user-input">USERNAME</label>
-              <input id="login-user-input" type="text" placeholder="Enter username" />
+              <label for="login-email-input">EMAIL</label>
+              <input id="login-email-input" type="email" placeholder="you@example.com" />
             </div>
             <div class="input-group">
               <label for="login-pass-input">PASSWORD</label>
               <input id="login-pass-input" type="password" placeholder="Enter password" />
             </div>
             <button id="btn-submit-login" type="button" class="flow-btn flow-btn-full">LOG IN & PLAY</button>
+            <div class="auth-divider"><span>OR</span></div>
+            <button id="btn-google-login" type="button" class="flow-btn flow-btn-full flow-btn-google">CONTINUE WITH GOOGLE</button>
           </div>
 
           <div id="form-register" class="auth-form">
+            <div class="input-group">
+              <label for="reg-email-input">EMAIL</label>
+              <input id="reg-email-input" type="email" placeholder="you@example.com" />
+            </div>
             <div class="input-group">
               <label for="reg-user-input">CREATE USERNAME</label>
               <input id="reg-user-input" type="text" placeholder="Min 3 characters" />
@@ -261,6 +267,8 @@
               <input id="reg-pass-input" type="password" placeholder="Min 4 characters" />
             </div>
             <button id="btn-submit-register" type="button" class="flow-btn flow-btn-full">REGISTER & PLAY</button>
+            <div class="auth-divider"><span>OR</span></div>
+            <button id="btn-google-register" type="button" class="flow-btn flow-btn-full flow-btn-google">CONTINUE WITH GOOGLE</button>
           </div>
         </div>
       </div>
@@ -272,6 +280,72 @@
         </div>
         <button id="install-banner-accept" type="button">INSTALL</button>
         <button id="install-banner-close" type="button" aria-label="Dismiss install prompt">×</button>
+      </div>
+
+      <!-- Character Creation Screen -->
+      <div id="character-screen" class="flow-overlay">
+        <div class="auth-card">
+          <div class="auth-header">
+            <div class="auth-kicker">CREATE YOUR CHARACTER</div>
+            <h2>WHO WILL YOU BE?</h2>
+          </div>
+
+          <!-- Gender -->
+          <div class="char-section">
+            <div class="section-label">GENDER</div>
+            <div class="char-grid">
+              <button id="char-gender-male" class="char-option is-selected" type="button" data-gender="male">
+                <div class="char-option-icon">👨</div>
+                <span>Male</span>
+              </button>
+              <button id="char-gender-female" class="char-option" type="button" data-gender="female">
+                <div class="char-option-icon">👩</div>
+                <span>Female</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Occupation -->
+          <div class="char-section">
+            <div class="section-label">OCCUPATION</div>
+            <div class="char-grid">
+              <button id="char-occ-hustler" class="char-option is-selected" type="button" data-occupation="Hustler">
+                <div class="char-option-icon">🔥</div>
+                <span>Hustler</span>
+                <span class="occ-desc">Street smart, starts with ₦100 extra cash</span>
+              </button>
+              <button id="char-occ-driver" class="char-option" type="button" data-occupation="Driver">
+                <div class="char-option-icon">🚗</div>
+                <span>Driver</span>
+                <span class="occ-desc">15% cheaper fuel, +15% vehicle HP</span>
+              </button>
+              <button id="char-occ-pilot" class="char-option" type="button" data-occupation="Pilot">
+                <div class="char-option-icon">✈️</div>
+                <span>Pilot</span>
+                <span class="occ-desc">25% cheaper fuel</span>
+              </button>
+              <button id="char-occ-mechanic" class="char-option" type="button" data-occupation="Mechanic">
+                <div class="char-option-icon">🔧</div>
+                <span>Mechanic</span>
+                <span class="occ-desc">20% cheaper repairs, +10% vehicle HP</span>
+              </button>
+              <button id="char-occ-police" class="char-option" type="button" data-occupation="Police">
+                <div class="char-option-icon">👮</div>
+                <span>Police</span>
+                <span class="occ-desc">30% faster wanted decay</span>
+              </button>
+              <button id="char-occ-thief" class="char-option" type="button" data-occupation="Thief">
+                <div class="char-option-icon">🎭</div>
+                <span>Thief</span>
+                <span class="occ-desc">40% higher mission rewards</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="char-error-msg" class="auth-error"></div>
+
+          <button id="btn-create-character" type="button" class="flow-btn flow-btn-full">START LIFE IN KANO</button>
+        </div>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>

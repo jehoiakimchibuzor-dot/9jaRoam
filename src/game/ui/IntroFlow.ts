@@ -5,7 +5,10 @@ export class IntroFlow {
   private splashEl: HTMLElement | null = null;
   private onboardEl: HTMLElement | null = null;
   private authEl: HTMLElement | null = null;
+  private charEl: HTMLElement | null = null;
   private selectedAvatar = 'street-rebel';
+  private selectedGender: 'male' | 'female' = 'male';
+  private selectedOccupation = 'Hustler';
   private currentSlideIndex = 0;
 
   constructor(private onComplete: (user: UserProfile) => void) {}
@@ -14,6 +17,7 @@ export class IntroFlow {
     this.splashEl = document.getElementById('splash-screen');
     this.onboardEl = document.getElementById('onboarding-screen');
     this.authEl = document.getElementById('auth-screen');
+    this.charEl = document.getElementById('character-screen');
 
     this.runSplashSequence();
   }
@@ -56,6 +60,7 @@ export class IntroFlow {
       return;
     }
 
+    this.onboardEl.classList.remove('is-hidden');
     this.onboardEl.classList.add('is-active');
     this.currentSlideIndex = 0;
     this.updateSlidePosition();
@@ -112,6 +117,7 @@ export class IntroFlow {
       return;
     }
 
+    this.authEl.classList.remove('is-hidden');
     this.authEl.classList.add('is-active');
     this.setupAuthTabs();
     this.setupAvatarPicker();
@@ -155,6 +161,8 @@ export class IntroFlow {
     const btnGuest = document.getElementById('btn-start-guest');
     const btnLogin = document.getElementById('btn-submit-login');
     const btnRegister = document.getElementById('btn-submit-register');
+    const btnGoogleLogin = document.getElementById('btn-google-login');
+    const btnGoogleRegister = document.getElementById('btn-google-register');
     const errorEl = document.getElementById('auth-error-msg');
 
     const showError = (msg: string) => {
@@ -172,40 +180,138 @@ export class IntroFlow {
       clearError();
       const guestNameInput = document.getElementById('guest-name-input') as HTMLInputElement;
       const name = guestNameInput?.value.trim() || 'Kano Roamer';
-      const user = this.authService.loginAsGuest(name, this.selectedAvatar);
-      this.complete(user);
+      const user = this.authService.loginAsGuest(name, this.selectedAvatar, this.selectedGender, this.selectedOccupation);
+      this.showCharacterScreen(user);
     });
 
-    btnLogin?.addEventListener('click', () => {
+    btnLogin?.addEventListener('click', async () => {
       clearError();
-      const userInput = document.getElementById('login-user-input') as HTMLInputElement;
+      const emailInput = document.getElementById('login-email-input') as HTMLInputElement;
       const passInput = document.getElementById('login-pass-input') as HTMLInputElement;
 
-      const res = this.authService.login(userInput?.value || '', passInput?.value || '');
+      const email = emailInput?.value.trim() || '';
+      const pass = passInput?.value || '';
+
+      if (!email || !pass) {
+        showError('Please enter both email and password.');
+        return;
+      }
+
+      const res = await this.authService.loginWithFirebase(email, pass);
       if (res.success && res.user) {
-        this.complete(res.user);
+        this.showCharacterScreen(res.user);
       } else {
         showError(res.error || 'Login failed.');
       }
     });
 
-    btnRegister?.addEventListener('click', () => {
+    btnRegister?.addEventListener('click', async () => {
       clearError();
+      const emailInput = document.getElementById('reg-email-input') as HTMLInputElement;
       const userInput = document.getElementById('reg-user-input') as HTMLInputElement;
       const passInput = document.getElementById('reg-pass-input') as HTMLInputElement;
 
-      const res = this.authService.register(userInput?.value || '', passInput?.value || '', this.selectedAvatar);
+      const email = emailInput?.value.trim() || '';
+      const username = userInput?.value.trim() || '';
+      const pass = passInput?.value || '';
+
+      if (!email || !username || !pass) {
+        showError('Please fill in email, username, and password.');
+        return;
+      }
+
+      const res = await this.authService.registerWithFirebase(email, pass, username, this.selectedAvatar, this.selectedGender, this.selectedOccupation);
       if (res.success && res.user) {
-        this.complete(res.user);
+        this.showCharacterScreen(res.user);
       } else {
         showError(res.error || 'Registration failed.');
       }
     });
+
+    const handleGoogle = async () => {
+      clearError();
+      const res = await this.authService.signInWithGoogle();
+      if (res.success && res.user) {
+        this.showCharacterScreen(res.user);
+      } else {
+        showError(res.error || 'Google sign-in failed.');
+      }
+    };
+
+    btnGoogleLogin?.addEventListener('click', handleGoogle);
+    btnGoogleRegister?.addEventListener('click', handleGoogle);
+  }
+
+  private showCharacterScreen(user: UserProfile): void {
+    this.authEl?.classList.remove('is-active');
+    this.authEl?.classList.add('is-hidden');
+
+    if (!this.charEl) {
+      this.complete(user);
+      return;
+    }
+
+    this.charEl.classList.remove('is-hidden');
+    this.charEl.classList.add('is-active');
+    this.setupCharacterSelection(user);
+  }
+
+  private setupCharacterSelection(user: UserProfile): void {
+    this.selectedGender = user.gender;
+    this.selectedOccupation = user.occupation;
+
+    const genderOptions = document.querySelectorAll('.char-option[data-gender]');
+    genderOptions.forEach((opt) => {
+      const gender = (opt as HTMLElement).dataset.gender;
+      if (gender === this.selectedGender) {
+        opt.classList.add('is-selected');
+      } else {
+        opt.classList.remove('is-selected');
+      }
+      opt.addEventListener('click', () => {
+        genderOptions.forEach((o) => o.classList.remove('is-selected'));
+        opt.classList.add('is-selected');
+        this.selectedGender = (gender as 'male' | 'female');
+      });
+    });
+
+    const occOptions = document.querySelectorAll('.char-option[data-occupation]');
+    occOptions.forEach((opt) => {
+      const occ = (opt as HTMLElement).dataset.occupation;
+      if (occ === this.selectedOccupation) {
+        opt.classList.add('is-selected');
+      } else {
+        opt.classList.remove('is-selected');
+      }
+      opt.addEventListener('click', () => {
+        occOptions.forEach((o) => o.classList.remove('is-selected'));
+        opt.classList.add('is-selected');
+        this.selectedOccupation = occ ?? 'Hustler';
+      });
+    });
+
+    const btnCreate = document.getElementById('btn-create-character');
+    const charErrorEl = document.getElementById('char-error-msg');
+
+    const clearError = () => {
+      if (charErrorEl) charErrorEl.style.display = 'none';
+    };
+
+    btnCreate?.addEventListener('click', () => {
+      clearError();
+
+      const updatedUser = this.authService.updateCharacter({
+        gender: this.selectedGender,
+        occupation: this.selectedOccupation,
+      });
+
+      this.complete(updatedUser);
+    });
   }
 
   private complete(user: UserProfile): void {
-    this.authEl?.classList.remove('is-active');
-    this.authEl?.classList.add('is-hidden');
+    this.charEl?.classList.remove('is-active');
+    this.charEl?.classList.add('is-hidden');
     this.onComplete(user);
   }
 }
