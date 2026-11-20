@@ -3801,3 +3801,97 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
     width: min(34vw, 280px);
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Gameplay performance guard
+   Live backdrop blur over a moving WebGL canvas forces the GPU to re-sample the
+   scene behind every HUD element. The premium look is kept with layered opaque
+   gradients, borders and shadows instead. Blur remains only on paused overlays
+   (pause card, settings, dialogs, map, rotate), where frame rate does not matter.
+--------------------------------------------------------------------------- */
+#hud #location,
+#hud #speed,
+#hud #status,
+#hud #minimap,
+#hud #minimap-mode,
+#hud #objective,
+#hud #signal,
+#hud #toast,
+#hud #hint,
+#hud #fullscreen-toggle,
+#hud #install-app,
+#controls .tctrl,
+#controls .stick-ring,
+#controls .stick-knob,
+.online-count,
+#install-banner {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+#hud #location,
+#hud #speed,
+#hud #objective {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.01)),
+    rgba(8, 13, 17, 0.9);
+}
+
+#hud #status {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.01)),
+    rgba(8, 13, 17, 0.92);
+}
+
+#hud #minimap {
+  background: rgba(6, 12, 16, 0.94);
+}
+
+#hud #minimap-mode,
+#hud #signal,
+#hud #toast,
+#hud #hint,
+#hud #fullscreen-toggle,
+#hud #install-app,
+#install-banner,
+.online-count {
+  background: rgba(7, 11, 15, 0.94);
+}
+
+#controls .tctrl {
+  background:
+    radial-gradient(circle at 50% 34%, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.02) 62%),
+    rgba(8, 12, 16, 0.9);
+}
+
+#controls .arc-primary {
+  background:
+    linear-gradient(150deg, rgba(255, 226, 150, 0.22), rgba(145, 105, 35, 0.1)),
+    rgba(10, 14, 17, 0.94);
+}
+
+#controls .tctrl.down {
+  background:
+    radial-gradient(circle at 50% 34%, rgba(255, 235, 180, 0.26), rgba(255, 210, 74, 0.04) 65%),
+    rgba(34, 28, 16, 0.94);
+}
+
+#controls .tctrl.is-on {
+  background:
+    radial-gradient(circle at 50% 34%, rgba(255, 226, 150, 0.26), rgba(255, 210, 74, 0.04) 65%),
+    rgba(28, 23, 13, 0.94);
+}
+
+#hud #fullscreen-toggle.is-fullscreen {
+  background:
+    linear-gradient(145deg, rgba(255, 226, 150, 0.22), rgba(255, 210, 74, 0.05)),
+    rgba(28, 23, 13, 0.94);
+}
+
+#controls .stick-ring {
+  background: radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.01) 70%);
+}
+
+#controls .stick-knob {
+  background: radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.1) 65%);
+}
