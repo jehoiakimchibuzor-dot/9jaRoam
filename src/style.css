@@ -1667,93 +1667,330 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
   opacity: 0.5;
 }
 
-/* Onboarding Screen */
+/* Onboarding Screen — premium intro */
+.onboarding-overlay {
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 50% -10%, rgba(231, 196, 119, 0.18), transparent 46%),
+    radial-gradient(circle at 8% 88%, rgba(80, 180, 132, 0.1), transparent 42%),
+    linear-gradient(180deg, #070a0d 0%, #0c1115 58%, #07090b 100%);
+}
+
+.onboarding-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+  background-size: 34px 34px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 18%, #000 72%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 18%, #000 72%, transparent);
+}
+
+.onboarding-overlay::after {
+  content: '';
+  position: absolute;
+  width: min(80vw, 420px);
+  height: min(80vw, 420px);
+  right: -30%;
+  top: -22%;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(231, 196, 119, 0.16), transparent 64%);
+  filter: blur(4px);
+}
+
 .onboard-card {
   position: relative;
-  width: 90%;
-  max-width: 520px;
-  background: rgba(14, 22, 18, 0.92);
-  border: 2px solid rgba(255, 210, 74, 0.35);
-  border-radius: 12px;
-  padding: 20px 24px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  width: min(92%, 520px);
+  min-height: min(680px, calc(100dvh - 32px));
+  max-height: calc(100dvh - 24px);
+  padding: 22px 24px 20px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(231, 196, 119, 0.24);
+  border-radius: 24px;
+  background: linear-gradient(160deg, rgba(24, 31, 29, 0.94), rgba(10, 14, 17, 0.96));
+  box-shadow:
+    0 28px 80px rgba(0, 0, 0, 0.66),
+    0 0 0 1px rgba(255, 255, 255, 0.035) inset,
+    0 1px 0 rgba(255, 246, 214, 0.1) inset;
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  backdrop-filter: blur(24px) saturate(140%);
+}
+
+.onboard-card::before {
+  content: '';
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 236, 180, 0.65), transparent);
+}
+
+.onboard-card::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -120px;
+  width: 320px;
+  height: 240px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  background: radial-gradient(ellipse, rgba(231, 196, 119, 0.08), transparent 66%);
+}
+
+.onboard-topbar {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.onboard-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #f8e5aa, #c79c45);
+  color: #14150f;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  box-shadow: 0 6px 18px rgba(207, 162, 71, 0.28);
+}
+
+.brand-name {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  color: #f0e9dc;
 }
 
 .flow-skip-btn {
-  position: absolute;
-  top: 14px;
-  right: 16px;
-  background: transparent;
-  border: none;
-  color: #a8b8ae;
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  font-weight: 700;
+  position: static;
+  min-height: 32px;
+  padding: 7px 12px;
+  border: 1px solid rgba(231, 196, 119, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #bdc8c0;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
   cursor: pointer;
-  padding: 4px 8px;
+}
+
+.flow-skip-btn:active {
+  transform: scale(0.96);
+}
+
+.onboard-progress {
+  position: relative;
+  z-index: 1;
+  height: 2px;
+  margin: 18px 0 12px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+#onboard-progress-fill {
+  width: 33.333%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #d7ad5e, #fff0bd);
+  box-shadow: 0 0 12px rgba(231, 196, 119, 0.5);
+  transition: width 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .onboard-viewport {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
   overflow: hidden;
-  margin: 12px 0;
+  margin: 0;
 }
 
 .onboard-track {
   display: flex;
-  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+  width: 100%;
+  transition: transform 0.42s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .onboard-slide {
   min-width: 100%;
+  padding: 0 4px;
   box-sizing: border-box;
   text-align: center;
-  padding: 10px 16px;
+  opacity: 0.45;
+  transform: scale(0.98);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.onboard-slide.is-active {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .slide-icon {
-  font-size: 42px;
-  margin-bottom: 8px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 92px;
+  height: 92px;
+  margin: 0 auto 22px;
+  border: 1px solid rgba(231, 196, 119, 0.34);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 50% 32%, rgba(231, 196, 119, 0.2), transparent 62%),
+    linear-gradient(145deg, rgba(231, 196, 119, 0.1), rgba(255, 255, 255, 0.02));
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.42),
+    0 0 34px rgba(231, 196, 119, 0.1),
+    0 1px 0 rgba(255, 246, 214, 0.15) inset;
+  color: #f0d28a;
+}
+
+.slide-icon svg {
+  width: 46px;
+  height: 46px;
+  filter: drop-shadow(0 0 10px rgba(231, 196, 119, 0.25));
+}
+
+.slide-kicker {
+  margin-bottom: 10px;
+  color: #d8b86f;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.24em;
 }
 
 .onboard-slide h2 {
-  font-size: 18px;
-  color: #ffd24a;
-  letter-spacing: 0.05em;
-  margin: 0 0 6px 0;
+  margin: 0 0 12px;
+  color: #f7f3ea;
+  font-size: clamp(24px, 6vw, 32px);
+  font-weight: 750;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+}
+
+.onboard-slide h2 em {
+  color: #e9c77a;
+  font-style: normal;
 }
 
 .onboard-slide p {
-  font-size: 12px;
-  color: #d1ded5;
-  line-height: 1.45;
-  margin: 0;
+  max-width: 420px;
+  margin: 0 auto;
+  color: #a9b7ae;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.slide-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 20px;
+}
+
+.slide-tags span {
+  padding: 6px 9px;
+  border: 1px solid rgba(231, 196, 119, 0.22);
+  border-radius: 999px;
+  background: rgba(231, 196, 119, 0.06);
+  color: #d8c7a0;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
 }
 
 .onboard-footer {
-  display: flex;
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
   margin-top: 14px;
+}
+
+.onboard-step {
+  color: #e7c77d;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.onboard-step span {
+  color: #66756b;
+  font-weight: 600;
 }
 
 .onboard-dots {
   display: flex;
-  gap: 8px;
+  justify-content: center;
+  gap: 6px;
 }
 
 .onboard-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.2);
-  transition: all 0.25s ease;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  transition: width 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
 }
 
 .onboard-dot.is-active {
-  width: 22px;
-  background: #ffd24a;
+  width: 20px;
+  background: linear-gradient(90deg, #e7c77d, #fff0bd);
+  box-shadow: 0 0 10px rgba(231, 196, 119, 0.45);
+}
+
+.onboard-next-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: 132px;
+  min-height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f8e5aa, #d5a94f);
+  box-shadow:
+    0 8px 22px rgba(208, 163, 72, 0.22),
+    0 1px 0 rgba(255, 255, 255, 0.5) inset;
+  color: #15150f;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+}
+
+.flow-btn-arrow {
+  font-size: 15px;
+  line-height: 1;
+  transition: transform 0.2s ease;
+}
+
+.onboard-next-btn:active .flow-btn-arrow {
+  transform: translateX(3px);
 }
 
 .flow-btn {
@@ -2211,23 +2448,27 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
     max-width: 520px;
     max-height: calc(100vh - 28px);
     max-height: calc(100dvh - 28px);
-    border-radius: 16px;
     touch-action: pan-y;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .auth-card,
+  .settings-card {
+    border-radius: 16px;
   }
 
   .onboard-card {
     min-height: calc(100vh - 28px);
     min-height: calc(100dvh - 28px);
-    justify-content: space-between;
-    padding: 22px 18px;
+    border-radius: 24px;
+    padding: 22px 18px 20px;
   }
 
   .onboard-viewport {
     display: flex;
     flex: 1 1 auto;
     align-items: center;
-    margin: 18px 0;
+    margin: 16px 0;
   }
 
   .onboard-track {
@@ -2235,26 +2476,35 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
   }
 
   .onboard-slide {
-    padding: 12px 8px;
+    padding: 0 4px;
   }
 
   .slide-icon {
-    font-size: clamp(48px, 16vw, 72px);
+    width: 96px;
+    height: 96px;
+    border-radius: 30px;
+  }
+
+  .slide-icon svg {
+    width: 48px;
+    height: 48px;
   }
 
   .onboard-slide h2 {
-    font-size: clamp(20px, 5.4vw, 26px);
+    font-size: clamp(26px, 7.4vw, 32px);
   }
 
   .onboard-slide p {
-    font-size: clamp(13px, 3.7vw, 16px);
-    line-height: 1.55;
+    font-size: clamp(13px, 3.7vw, 15px);
+    line-height: 1.62;
+  }
+
+  .slide-tags {
+    margin-top: 18px;
   }
 
   .flow-skip-btn {
-    top: 18px;
-    right: 18px;
-    font-size: 12px;
+    font-size: 9px;
   }
 
   .flow-btn,
@@ -2262,6 +2512,12 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
   .help-settings {
     min-height: 44px;
     font-size: 13px;
+  }
+
+  .onboard-next-btn {
+    min-height: 46px;
+    font-size: 10px;
+    letter-spacing: 0.16em;
   }
 
   .onboard-footer {
@@ -2337,5 +2593,73 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
   #rotate .rotate-card {
     width: min(90vw, 360px);
     padding: 26px 22px;
+  }
+}
+
+/* Keep the premium intro readable if the phone is held sideways before
+   gameplay starts. Gameplay still prompts for rotation after onboarding. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .onboard-card {
+    min-height: calc(100dvh - 24px);
+    max-height: calc(100dvh - 16px);
+    padding: 16px 20px 14px;
+    border-radius: 18px;
+  }
+
+  .onboard-progress {
+    margin: 10px 0 8px;
+  }
+
+  .onboard-viewport {
+    margin: 4px 0;
+  }
+
+  .slide-icon {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 12px;
+    border-radius: 20px;
+  }
+
+  .slide-icon svg {
+    width: 34px;
+    height: 34px;
+  }
+
+  .slide-kicker {
+    margin-bottom: 6px;
+    font-size: 8px;
+  }
+
+  .onboard-slide h2 {
+    margin-bottom: 6px;
+    font-size: 22px;
+  }
+
+  .onboard-slide p {
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .slide-tags {
+    margin-top: 10px;
+  }
+
+  .slide-tags span {
+    padding: 4px 7px;
+    font-size: 7px;
+  }
+
+  .onboard-footer {
+    margin-top: 8px;
+  }
+
+  .onboard-next-btn {
+    min-height: 38px;
+  }
+
+  .flow-skip-btn {
+    min-height: 28px;
+    padding: 5px 10px;
   }
 }

@@ -162,35 +162,94 @@
         </div>
       </div>
 
-      <div id="onboarding-screen" class="flow-overlay">
+      <div id="onboarding-screen" class="flow-overlay onboarding-overlay">
         <div class="onboard-card">
-          <button id="onboard-skip-btn" type="button" class="flow-skip-btn">SKIP</button>
+          <div class="onboard-topbar">
+            <div class="onboard-brand">
+              <span class="brand-mark">9J</span>
+              <span class="brand-name">9JA ROAM</span>
+            </div>
+            <button id="onboard-skip-btn" type="button" class="flow-skip-btn">SKIP</button>
+          </div>
+
+          <div class="onboard-progress" aria-hidden="true">
+            <div id="onboard-progress-fill"></div>
+          </div>
+
           <div class="onboard-viewport">
             <div id="onboard-track" class="onboard-track">
-              <div class="onboard-slide">
-                <div class="slide-icon">🏙️</div>
-                <h2>WELCOME TO KANO</h2>
-                <p>Explore a vibrant, low-poly 3D Nigerian metropolis. Roam the city streets, transit hubs, market stalls, and expressways.</p>
+              <div class="onboard-slide is-active">
+                <div class="slide-icon">
+                  <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M9 54V25l13-8v10l10-6v13l10-6v26" />
+                    <path d="M9 54h46" />
+                    <path d="M19 34v5M29 31v5M39 29v6M19 45h6M29 45h6M39 45h6" />
+                  </svg>
+                </div>
+                <div class="slide-kicker">01 · THE CITY</div>
+                <h2>Kano, <em>reimagined.</em></h2>
+                <p>A living low-poly metropolis built for roaming. Move through streets, markets, transit hubs, and expressways with the city at your fingertips.</p>
+                <div class="slide-tags">
+                  <span>OPEN WORLD</span>
+                  <span>3D CITY</span>
+                  <span>DAY · NIGHT</span>
+                </div>
               </div>
+
               <div class="onboard-slide">
-                <div class="slide-icon">🏎️</div>
-                <h2>DRIVE, FLY & COMBAT</h2>
-                <p>Drive sports cars, Danfo buses, and pilot stunt planes or helicopters. Complete missions, fight rival gangs, and dodge police.</p>
+                <div class="slide-icon">
+                  <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M11 40l5-14h32l5 14" />
+                    <path d="M9 40h46v9H9z" />
+                    <path d="M20 26l4-9h16l5 9" />
+                    <circle cx="20" cy="49" r="4" />
+                    <circle cx="44" cy="49" r="4" />
+                    <path d="M16 35h32" />
+                  </svg>
+                </div>
+                <div class="slide-kicker">02 · THE DRIVE</div>
+                <h2>Every ride. <em>Every risk.</em></h2>
+                <p>Take the wheel of supercars and Danfo buses, or take to the skies in stunt planes and helicopters. Missions, rivals, and police never rest.</p>
+                <div class="slide-tags">
+                  <span>DRIVE</span>
+                  <span>FLY</span>
+                  <span>COMBAT</span>
+                </div>
               </div>
+
               <div class="onboard-slide">
-                <div class="slide-icon">💰</div>
-                <h2>RISE TO THE TOP</h2>
-                <p>Earn cash from street hustles, repair vehicles at city garages, deposit money at banks, and build your Kano empire!</p>
+                <div class="slide-icon">
+                  <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M17 45l13-13 8 8 13-16" />
+                    <path d="M38 24h13v13" />
+                    <path d="M12 54h40" />
+                    <circle cx="20" cy="19" r="5" />
+                    <path d="M20 24v8" />
+                  </svg>
+                </div>
+                <div class="slide-kicker">03 · THE HUSTLE</div>
+                <h2>Build your <em>empire.</em></h2>
+                <p>Earn from street hustles, repair rides at the garage, bank your money, and turn every run into a bigger name on the streets of Kano.</p>
+                <div class="slide-tags">
+                  <span>EARN</span>
+                  <span>UPGRADE</span>
+                  <span>RULE</span>
+                </div>
               </div>
             </div>
           </div>
+
           <div class="onboard-footer">
+            <div id="onboard-step" class="onboard-step">01 <span>/ 03</span></div>
             <div class="onboard-dots">
               <span class="onboard-dot is-active"></span>
               <span class="onboard-dot"></span>
               <span class="onboard-dot"></span>
             </div>
-            <button id="onboard-next-btn" type="button" class="flow-btn">NEXT</button>
+            <button id="onboard-next-btn" type="button" class="flow-btn onboard-next-btn">
+              <span>CONTINUE</span>
+              <span class="flow-btn-arrow">→</span>
+            </button>
           </div>
         </div>
       </div>

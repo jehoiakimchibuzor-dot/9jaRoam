@@ -88,19 +88,38 @@ export class IntroFlow {
 
   private updateSlidePosition(): void {
     const track = document.getElementById('onboard-track');
+    const slides = document.querySelectorAll('.onboard-slide');
     const dots = document.querySelectorAll('.onboard-dot');
     const nextBtn = document.getElementById('onboard-next-btn');
+    const progressFill = document.getElementById('onboard-progress-fill');
+    const stepEl = document.getElementById('onboard-step');
+    const total = slides.length || 3;
 
     if (track) {
       track.style.transform = `translateX(-${this.currentSlideIndex * 100}%)`;
     }
 
+    slides.forEach((slide, idx) => {
+      slide.classList.toggle('is-active', idx === this.currentSlideIndex);
+    });
+
     dots.forEach((dot, idx) => {
       dot.classList.toggle('is-active', idx === this.currentSlideIndex);
     });
 
+    if (progressFill) {
+      progressFill.style.width = `${((this.currentSlideIndex + 1) / total) * 100}%`;
+    }
+
+    if (stepEl) {
+      stepEl.innerHTML = `${String(this.currentSlideIndex + 1).padStart(2, '0')} <span>/ ${String(total).padStart(2, '0')}</span>`;
+    }
+
     if (nextBtn) {
-      nextBtn.textContent = this.currentSlideIndex === 2 ? 'GET STARTED' : 'NEXT';
+      const label = nextBtn.querySelector('span');
+      const text = this.currentSlideIndex === total - 1 ? 'ENTER KANO' : 'CONTINUE';
+      if (label) label.textContent = text;
+      else nextBtn.textContent = text;
     }
   }
 
