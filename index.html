@@ -17,7 +17,7 @@
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png" />
   </head>
-  <body>
+  <body class="intro-active splash-active">
     <div id="app">
       <canvas id="scene"></canvas>
       <div id="damage-flash"></div>
@@ -151,14 +151,16 @@
       </div>
 
       <!-- Flow Overlays: Splash, Onboarding & Auth -->
-      <div id="splash-screen" class="flow-overlay">
+      <div id="splash-screen" class="flow-overlay splash-overlay" role="dialog" aria-label="9ja Roam loading">
         <div class="splash-card">
+          <div class="splash-mark">9J</div>
           <div class="splash-logo">9JA ROAM</div>
-          <div class="splash-subtitle">KANO STREETS · 3D MOBILE</div>
+          <div class="splash-subtitle">KANO STREETS · OPEN WORLD</div>
           <div class="splash-progress">
             <div id="splash-progress-fill"></div>
           </div>
-          <div class="splash-footer">POWERED BY THREE.JS · CAPACITOR</div>
+          <div class="splash-status">PREPARING THE CITY…</div>
+          <div class="splash-footer">EARLY BETA · OPEN DEMO</div>
         </div>
       </div>
 

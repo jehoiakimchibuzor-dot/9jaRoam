@@ -1,4 +1,4 @@
-const SHELL_CACHE = '9ja-roam-shell-v5';
+const SHELL_CACHE = '9ja-roam-shell-v6';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

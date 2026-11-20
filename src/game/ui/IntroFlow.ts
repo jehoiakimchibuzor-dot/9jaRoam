@@ -24,16 +24,19 @@ export class IntroFlow {
 
   private runSplashSequence(): void {
     if (!this.splashEl) {
+      document.body.classList.remove('splash-active');
       this.checkOnboarding();
       return;
     }
 
     this.splashEl.classList.add('is-active');
+    document.body.classList.add('splash-active');
+
     const barFill = document.getElementById('splash-progress-fill');
     if (barFill) {
       barFill.style.width = '0%';
       requestAnimationFrame(() => {
-        barFill.style.transition = 'width 1.6s cubic-bezier(0.2, 0.8, 0.2, 1)';
+        barFill.style.transition = 'width 2s cubic-bezier(0.2, 0.8, 0.2, 1)';
         barFill.style.width = '100%';
       });
     }
@@ -41,8 +44,9 @@ export class IntroFlow {
     setTimeout(() => {
       this.splashEl?.classList.remove('is-active');
       this.splashEl?.classList.add('is-hidden');
+      document.body.classList.remove('splash-active');
       this.checkOnboarding();
-    }, 1800);
+    }, 2400);
   }
 
   private checkOnboarding(): void {

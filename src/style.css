@@ -887,6 +887,19 @@ body {
   transform: scale(0.97);
 }
 
+/* Launch flow must never show the in-game layer. The body starts with
+   intro-active in index.html so this is true on the very first paint. */
+body.intro-active #hud,
+body.intro-active #controls,
+body.intro-active #world-map,
+body.intro-active #dialog,
+body.intro-active #death,
+body.intro-active #damage-flash,
+body.intro-active #scene-fade,
+body.intro-active .online-count {
+  display: none !important;
+}
+
 /* Account screens are scrollable; the game controls are not. */
 body.intro-active #app,
 body.settings-active #app {
@@ -1618,53 +1631,163 @@ body.game-active #app:not(:has(.flow-overlay.is-active)) {
   display: none !important;
 }
 
-/* Splash Screen */
+/* Real launch splash — fully opaque, above every other screen */
+.splash-overlay {
+  z-index: 400;
+  isolation: isolate;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(231, 196, 119, 0.16), transparent 44%),
+    radial-gradient(circle at 12% 88%, rgba(74, 150, 112, 0.12), transparent 46%),
+    linear-gradient(180deg, #05080a, #0a0e12 62%, #050709);
+}
+
+.splash-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 38px 38px;
+  -webkit-mask-image: radial-gradient(circle at 50% 44%, #000, transparent 72%);
+  mask-image: radial-gradient(circle at 50% 44%, #000, transparent 72%);
+  animation: splashGridDrift 9s ease-in-out infinite alternate;
+}
+
+.splash-overlay::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  width: min(86vw, 460px);
+  aspect-ratio: 1;
+  z-index: -1;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(231, 196, 119, 0.16);
+  border-radius: 50%;
+  box-shadow: 0 0 80px rgba(231, 196, 119, 0.08) inset;
+  animation: splashRingPulse 2.6s ease-out infinite;
+}
+
 .splash-card {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
   padding: 24px;
+  animation: splashRise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.splash-mark {
+  display: grid;
+  place-items: center;
+  width: 66px;
+  height: 66px;
+  margin-bottom: 20px;
+  border: 1px solid rgba(255, 240, 190, 0.65);
+  border-radius: 19px;
+  background: linear-gradient(145deg, #f9e6ac, #c3953f);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.55),
+    0 0 34px rgba(231, 196, 119, 0.28),
+    0 1px 0 rgba(255, 255, 255, 0.6) inset;
+  color: #14150f;
+  font-size: 19px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
 }
 
 .splash-logo {
-  font-size: 38px;
+  background: linear-gradient(180deg, #fff8e6 0%, #e9c77a 54%, #b8863a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-size: clamp(42px, 13vw, 68px);
   font-weight: 900;
-  letter-spacing: 0.08em;
-  color: #ffd24a;
-  text-shadow: 0 0 20px rgba(255, 210, 74, 0.4), 0 3px 0 #000;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.65));
 }
 
 .splash-subtitle {
-  font-size: 11px;
-  letter-spacing: 0.25em;
-  color: #9ab4a2;
-  margin-top: 4px;
+  margin-top: 10px;
+  color: #a7b8ac;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.3em;
   text-transform: uppercase;
 }
 
 .splash-progress {
-  width: 220px;
-  height: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
-  margin: 24px 0 16px;
+  width: min(260px, 70vw);
+  height: 4px;
+  margin: 26px 0 12px;
   overflow: hidden;
-  border: 1px solid rgba(255, 210, 74, 0.2);
+  border: 1px solid rgba(231, 196, 119, 0.26);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 18px rgba(231, 196, 119, 0.1) inset;
 }
 
 #splash-progress-fill {
   width: 0%;
   height: 100%;
-  background: linear-gradient(90deg, #ffd24a, #4ade80);
-  border-radius: 3px;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #b9893b, #f7e3a3 72%, #fff8dc);
+  box-shadow: 0 0 14px rgba(255, 238, 180, 0.55);
+}
+
+.splash-status {
+  color: #d8c7a0;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  animation: splashStatusPulse 1.4s ease-in-out infinite alternate;
 }
 
 .splash-footer {
+  position: absolute;
+  bottom: max(22px, env(safe-area-inset-bottom));
+  color: #7f9185;
   font-size: 9px;
-  letter-spacing: 0.15em;
-  opacity: 0.5;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+}
+
+@keyframes splashRise {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes splashRingPulse {
+  0% { opacity: 0.75; transform: translate(-50%, -50%) scale(0.9); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.18); }
+}
+
+@keyframes splashGridDrift {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-14px, -10px, 0); }
+}
+
+@keyframes splashStatusPulse {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-card,
+  .splash-overlay::before,
+  .splash-overlay::after,
+  .splash-status {
+    animation: none !important;
+  }
 }
 
 /* Onboarding + auth screens — premium glass intro */

@@ -56,7 +56,7 @@ const intro = new IntroFlow((user) => {
   game.setUser(user);
   game.start();
   gameStarted = true;
-  document.body.classList.remove('intro-active');
+  document.body.classList.remove('intro-active', 'splash-active');
   document.body.classList.add('game-active');
   updateRotatePrompt();
   // In portrait, wait for the rotate prompt's tap before locking landscape.
