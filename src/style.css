@@ -1987,3 +1987,25 @@ body {
   margin-top: 2px;
   line-height: 1.2;
 }
+
+/* Multiplayer online counter */
+.online-count {
+  position: absolute;
+  top: calc(max(0px, env(safe-area-inset-top) - 10px) + 8px);
+  right: calc(12px + env(safe-area-inset-right));
+  z-index: 14;
+  padding: 6px 10px;
+  border: 1px solid rgba(74, 222, 128, 0.55);
+  border-radius: 999px;
+  background: rgba(8, 18, 14, 0.72);
+  color: #86efac;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  pointer-events: none;
+  backdrop-filter: blur(3px);
+}
+
+.online-count.is-hidden {
+  display: none !important;
+}

@@ -70,7 +70,9 @@ import { CombatCallbacks, CombatHit } from './systems/CombatTypes';
 import { createHealth, damageHealth, healHealth, Health, restoreHealth } from './systems/Health';
 import { clamp, pushOutColliders, rayWallDistance } from './systems/Physics';
 import { GameAudio } from './systems/GameAudio';
+import { MultiplayerService, type RemotePlayerState } from './systems/MultiplayerService';
 import type { UserProfile } from './systems/AuthService';
+import { RemotePlayers } from './entities/RemotePlayers';
 import { IS_ANDROID } from './platform';
 
 type Mode = 'foot' | 'drive' | 'entering' | 'exiting' | 'falling';
@@ -310,6 +312,10 @@ export class Game {
   private money = 150;
   private user: UserProfile | null = null;
   private occupationBonusKey = '';
+  private multiplayer = MultiplayerService.getInstance();
+  private remotePlayers: RemotePlayers | null = null;
+  private onlineBadge: HTMLElement | null = null;
+  private lastOnlineCount = -1;
   private bankBalance = STARTING_BANK_BALANCE;
   private loanBalance = 0;
   private bankStorageAvailable = true;
@@ -457,6 +463,14 @@ export class Game {
 
     this.scene.background = new THREE.Color(0xa9cae8);
     this.scene.fog = new THREE.Fog(0xc4d9ea, 85, 340);
+
+    this.remotePlayers = new RemotePlayers(this.scene);
+    this.onlineBadge = document.createElement('div');
+    this.onlineBadge.id = 'online-count';
+    this.onlineBadge.className = 'online-count is-hidden';
+    this.onlineBadge.textContent = 'ONLINE · 1';
+    (document.getElementById('hud') ?? document.body).appendChild(this.onlineBadge);
+    this.multiplayer.subscribe((players) => this.onPlayersUpdated(players));
 
     this.hemisphereLight = new THREE.HemisphereLight(0xd9ecff, 0x7a6a52, 1.3);
     this.sunLight = new THREE.DirectionalLight(0xfff4dc, 2.7);
@@ -913,6 +927,8 @@ export class Game {
 
     this.occupationBonusKey = key;
     this.saveProgress();
+
+    if (!user.isGuest) void this.multiplayer.start(user);
   }
 
   private get occupation(): string {
@@ -953,6 +969,38 @@ export class Game {
 
   private missionReward(amount: number): number {
     return this.occupation === 'Thief' ? Math.round(amount * 1.4) : amount;
+  }
+
+  private onPlayersUpdated(players: RemotePlayerState[]): void {
+    const count = players.length;
+    this.remotePlayers?.update(players, this.multiplayer.selfUid);
+
+    if (this.onlineBadge) {
+      this.onlineBadge.classList.toggle('is-hidden', count === 0);
+      this.onlineBadge.textContent = `ONLINE · ${count}`;
+    }
+
+    if (this.lastOnlineCount >= 0 && count !== this.lastOnlineCount && count > 0) {
+      this.showToast(count > this.lastOnlineCount ? 'PLAYER JOINED KANO' : 'PLAYER LEFT KANO');
+    }
+    this.lastOnlineCount = count;
+  }
+
+  private updateMultiplayer(dt: number): void {
+    if (!this.multiplayer.isConnected) return;
+    const position = this.mode === 'drive' && this.activeVehicle
+      ? this.activeVehicle.group.position
+      : this.player.group.position;
+    const yaw = this.mode === 'drive' && this.activeVehicle ? this.carYaw : this.player.yaw;
+
+    this.multiplayer.updatePose({
+      x: position.x,
+      y: position.y,
+      z: position.z,
+      yaw,
+      mode: this.mode
+    });
+    this.remotePlayers?.updateFrame(dt);
   }
 
   start(): void {
@@ -1019,6 +1067,7 @@ export class Game {
     this.gameClockMs += Math.min(rawDt, 0.25) * 1000 * Game.GAME_TIME_SCALE;
     this.expandShadow();
     this.update(dt);
+    this.updateMultiplayer(dt);
     this.updateClock();
     this.renderer.render(this.scene, this.camera);
     this.adaptResolution(rawDt);
